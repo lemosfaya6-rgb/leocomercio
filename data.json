@@ -1,0 +1,112 @@
+{
+  "settings": {
+    "logo": "Leocomércio",
+    "phone": "936386566",
+    "slogan": "Imprimimos por si. Entregamos até você.",
+    "tiktok": "https://tiktok.com/@leocomercio",
+    "facebook": "https://facebook.com/leocomercio",
+    "whatsapp": "+244936386566",
+    "instagram": "https://instagram.com/leocomercio",
+    "deliveryFee": 500,
+    "whatsappMessage": "Olá, quero imprimir um documento.\n\nTipo:\nQuantidade de páginas:\nTipo de impressão:\nEndereço:",
+    "heavyImagesNotice": "Documentos com muitas imagens, gráficos ou alta qualidade podem ter preço ajustado. O valor será informado antes da impressão."
+  },
+  "prices": {
+    "bw": {
+      "promo": {
+        "pages": 3,
+        "price": 100
+      },
+      "single": 50
+    },
+    "color": {
+      "promo": {
+        "pages": 2,
+        "price": 150
+      },
+      "single": 100
+    }
+  },
+  "partners": [],
+  "afiliados": [
+    {
+      "id": 1774431369591,
+      "code": "AFI-VUBKQ",
+      "name": "Lemos Faya",
+      "email": "lemosfaya6@gmail.com",
+      "stats": {
+        "earned": 0
+      },
+      "active": true,
+      "password": "LF2026",
+      "commission": 15
+    }
+  ],
+  "orders": [
+    {
+      "id": 1774434667181,
+      "type": "color",
+      "pages": 6,
+      "status": "Em Andamento",
+      "address": "Nona perto da Clínia",
+      "fileUrl": "",
+      "message": "",
+      "whatsapp": "936386566",
+      "createdAt": "2026-03-25T10:31:07.181Z",
+      "totalPrice": 450,
+      "serviceType": "print",
+      "customerName": "Lemos Faya",
+      "deliveryDate": "2026-03-26",
+      "deliveryTime": "11:45",
+      "deliveryType": "delivery",
+      "deliveryAreaId": "",
+      "colorComplexity": "simple"
+    },
+    {
+      "id": 1774435096441,
+      "type": "bw",
+      "pages": 6,
+      "status": "Pronto",
+      "address": "kukala kiaku",
+      "fileUrl": "/uploads/1774435096135-155343841.docx",
+      "message": "",
+      "whatsapp": "936386566",
+      "createdAt": "2026-03-25T10:38:16.441Z",
+      "totalPrice": 200,
+      "serviceType": "print",
+      "customerName": "Lemos Faya",
+      "deliveryDate": "2026-03-26",
+      "deliveryTime": "11:30",
+      "deliveryType": "delivery",
+      "trackingCode": "G3FEQ6",
+      "deliveryAreaId": "",
+      "colorComplexity": "simple"
+    },
+    {
+      "id": 1774436077320,
+      "customerName": "LEO",
+      "whatsapp": "937438655",
+      "address": "",
+      "pages": 1,
+      "type": "bw",
+      "colorComplexity": "simple",
+      "serviceType": "document",
+      "deliveryType": "delivery",
+      "deliveryAreaId": "",
+      "deliveryDate": "",
+      "deliveryTime": "",
+      "message": "CORRICULUM",
+      "fileUrl": "",
+      "trackingCode": "KSEBLS",
+      "totalPrice": 0,
+      "status": "Pedido Recebido",
+      "createdAt": "2026-03-25T10:54:37.320Z"
+    }
+  ],
+  "admins": [
+    {
+      "email": "admin@leocomercio.com",
+      "password": "admin"
+    }
+  ]
+}

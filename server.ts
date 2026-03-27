@@ -51,35 +51,83 @@ const initialData = {
     whatsappMessage: "Olá, quero imprimir um documento.\n\nTipo:\nQuantidade de páginas:\nTipo de impressão:\nEndereço:",
     heavyImagesNotice: "Documentos com muitas imagens, gráficos ou alta qualidade podem ter preço ajustado. O valor será informado antes da impressão.",
     deliveryFee: 500,
+    deliveryAreas: [
+      { id: "1", name: "Talatona", price: 500 },
+      { id: "2", name: "Kilamba", price: 1000 },
+      { id: "3", name: "Maianga", price: 700 },
+    ],
+    deliveryDays: "Segunda a Domingo, das 09h às 18h",
+    enabledDeliveryDays: ["Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo"],
     gallery: [] as { id: number, url: string, title: string }[],
+    ebookUrl: "",
+    defaultCommission: 30,
   },
-  prices: {
-    bw: { single: 50, promo: { pages: 3, price: 100 } },
-    color: { single: 100, promo: { pages: 2, price: 150 } },
-  },
+  prices: [
+    { id: "bw", name: "Preto e Branco", description: "Impressão padrão em preto e branco para documentos e textos.", single: 50, promo: { pages: 3, price: 100 }, active: true },
+    { id: "colorSimple", name: "Colorido", description: "Impressão colorida de alta qualidade para apresentações e trabalhos.", single: 100, promo: { pages: 2, price: 150 }, active: true },
+    { id: "colorHeavy", name: "Colorido Pesado", description: "Impressão colorida com alta cobertura de tinta para fotos e imagens.", single: 200, promo: { pages: 10, price: 150 }, active: true },
+  ],
   partners: [],
   afiliados: [],
   orders: [],
+  supportMessages: [] as { id: number, name: string, contact: string, message: string, createdAt: string, read: boolean }[],
   admins: [{ email: "admin@leocomercio.com", password: "admin" }],
 };
 
 // Load or Initialize Data
 function loadData() {
+  let data = { ...initialData };
   if (fs.existsSync(DATA_FILE)) {
     try {
-      return JSON.parse(fs.readFileSync(DATA_FILE, "utf-8"));
+      const fileData = JSON.parse(fs.readFileSync(DATA_FILE, "utf-8"));
+      data = { ...initialData, ...fileData };
+      if (fileData.settings) {
+        data.settings = { ...initialData.settings, ...fileData.settings };
+      }
     } catch (e) {
-      return initialData;
+      console.error("Error loading data.json, using initialData");
     }
   }
-  return initialData;
+  return data;
+}
+
+function ensureArrays(data: any) {
+  if (!data.orders) data.orders = [];
+  if (!data.partners) data.partners = [];
+  if (!data.afiliados) data.afiliados = [];
+  if (!data.supportMessages) data.supportMessages = [];
+  if (!data.admins) data.admins = initialData.admins;
+  if (!data.settings) data.settings = { ...initialData.settings };
+  if (!data.settings.gallery) data.settings.gallery = [];
+  if (!data.settings.deliveryAreas) data.settings.deliveryAreas = initialData.settings.deliveryAreas;
+  if (!data.settings.enabledDeliveryDays) data.settings.enabledDeliveryDays = initialData.settings.enabledDeliveryDays;
+  if (data.settings.defaultCommission === undefined) data.settings.defaultCommission = 30;
+  if (!data.prices || !Array.isArray(data.prices)) data.prices = initialData.prices;
+  if (data.settings.enabledDeliveryDays.length === 5 && !data.settings.enabledDeliveryDays.includes("Sábado")) {
+    data.settings.enabledDeliveryDays = ["Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo"];
+    data.settings.deliveryDays = "Segunda a Domingo, das 09h às 18h";
+  }
+  
+  // Update commissions to 30% if they are at the old default (10%)
+  if (data.partners) {
+    data.partners.forEach((p: any) => {
+      if (p.commission === 10) p.commission = 30;
+    });
+  }
+  if (data.afiliados) {
+    data.afiliados.forEach((a: any) => {
+      if (a.commission === 10) a.commission = 30;
+    });
+  }
+  
+  return data;
 }
 
 function saveData(data: any) {
   fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
 }
 
-let db = loadData();
+let db = ensureArrays(loadData());
 
 // Supabase Sync Helpers
 async function syncFromSupabase() {
@@ -101,6 +149,7 @@ async function syncFromSupabase() {
           db[item.key] = item.value;
         }
       });
+      db = ensureArrays(db);
       console.log("✅ Data synced from Supabase");
     } else {
       // If Supabase is empty, initialize it with local data
@@ -153,6 +202,7 @@ async function startServer() {
   app.get("/api/gallery", (req, res) => res.json(db.settings.gallery));
   app.post("/api/gallery", async (req, res) => {
     const newItem = { id: Date.now(), ...req.body };
+    if (!db.settings.gallery) db.settings.gallery = [];
     db.settings.gallery.push(newItem);
     saveData(db);
     await saveToSupabase("settings", db.settings);
@@ -172,10 +222,34 @@ async function startServer() {
     await saveToSupabase("prices", db.prices);
     res.json(db.prices);
   });
+  app.post("/api/prices/add", async (req, res) => {
+    const newService = {
+      id: Date.now().toString(),
+      name: req.body.name || "Novo Serviço",
+      description: req.body.description || "",
+      single: req.body.single || 0,
+      promo: {
+        pages: req.body.promoPages || 0,
+        price: req.body.promoPrice || 0
+      },
+      active: true
+    };
+    db.prices.push(newService);
+    saveData(db);
+    await saveToSupabase("prices", db.prices);
+    res.json(newService);
+  });
+  app.delete("/api/prices/:id", async (req, res) => {
+    db.prices = db.prices.filter((p: any) => p.id !== req.params.id);
+    saveData(db);
+    await saveToSupabase("prices", db.prices);
+    res.json({ success: true });
+  });
 
   app.get("/api/orders", (req, res) => res.json(db.orders));
   app.post("/api/orders", async (req, res) => {
-    const newOrder = { id: Date.now(), ...req.body, status: "Pendente", createdAt: new Date() };
+    const newOrder = { id: Date.now(), ...req.body, status: "Pedido Recebido", createdAt: new Date() };
+    if (!db.orders) db.orders = [];
     db.orders.push(newOrder);
     saveData(db);
     await saveToSupabase("orders", db.orders);
@@ -192,6 +266,12 @@ async function startServer() {
       res.status(404).json({ error: "Order not found" });
     }
   });
+  app.delete("/api/orders/:id", async (req, res) => {
+    db.orders = db.orders.filter((o: any) => o.id !== parseInt(req.params.id));
+    saveData(db);
+    await saveToSupabase("orders", db.orders);
+    res.json({ success: true });
+  });
 
   app.get("/api/partners", (req, res) => res.json(db.partners));
   app.post("/api/partners", async (req, res) => {
@@ -200,10 +280,11 @@ async function startServer() {
       ...req.body, 
       code: `PAR-${Math.random().toString(36).substring(7).toUpperCase()}`, 
       password: req.body.password || Math.random().toString(36).substring(7),
-      commission: req.body.commission || 10, 
+      commission: req.body.commission || db.settings.defaultCommission || 30, 
       stats: { leaves: 0, earned: 0 },
       active: true
     };
+    if (!db.partners) db.partners = [];
     db.partners.push(newPartner);
     saveData(db);
     await saveToSupabase("partners", db.partners);
@@ -228,10 +309,11 @@ async function startServer() {
       ...req.body, 
       code: `AFI-${Math.random().toString(36).substring(7).toUpperCase()}`, 
       password: req.body.password || Math.random().toString(36).substring(7),
-      commission: req.body.commission || 10, 
+      commission: req.body.commission || db.settings.defaultCommission || 30, 
       stats: { earned: 0 },
       active: true
     };
+    if (!db.afiliados) db.afiliados = [];
     db.afiliados.push(newAfiliado);
     saveData(db);
     await saveToSupabase("afiliados", db.afiliados);
@@ -273,6 +355,22 @@ async function startServer() {
     }
   });
 
+  app.post("/api/commissions/update-all", async (req, res) => {
+    const { commission } = req.body;
+    if (typeof commission !== "number") return res.status(400).json({ error: "Invalid commission" });
+    
+    db.settings.defaultCommission = commission;
+    db.partners.forEach((p: any) => p.commission = commission);
+    db.afiliados.forEach((a: any) => a.commission = commission);
+    
+    saveData(db);
+    await saveToSupabase("partners", db.partners);
+    await saveToSupabase("afiliados", db.afiliados);
+    await saveToSupabase("settings", [db.settings]);
+    
+    res.json({ success: true });
+  });
+
   app.get("/api/stats", (req, res) => {
     const totalVendas = db.orders.length;
     const totalFolhas = db.orders.reduce((acc: number, o: any) => acc + (o.pages || 0), 0);
@@ -280,6 +378,41 @@ async function startServer() {
     const comissoesPagas = db.partners.reduce((acc: number, p: any) => acc + (p.stats.earned || 0), 0) + 
                           db.afiliados.reduce((acc: number, a: any) => acc + (a.stats.earned || 0), 0);
     res.json({ totalVendas, totalFolhas, lucroEstimado, comissoesPagas });
+  });
+
+  app.get("/api/support", (req, res) => res.json(db.supportMessages || []));
+  app.post("/api/support", async (req, res) => {
+    const ticketCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+    const newMessage = { 
+      id: Date.now(), 
+      ...req.body, 
+      createdAt: new Date().toISOString(),
+      read: false,
+      ticketCode,
+      responses: []
+    };
+    if (!db.supportMessages) db.supportMessages = [];
+    db.supportMessages.push(newMessage);
+    saveData(db);
+    await saveToSupabase("supportMessages", db.supportMessages);
+    res.json(newMessage);
+  });
+  app.patch("/api/support/:id", async (req, res) => {
+    const message = db.supportMessages.find((m: any) => m.id === parseInt(req.params.id));
+    if (message) {
+      Object.assign(message, req.body);
+      saveData(db);
+      await saveToSupabase("supportMessages", db.supportMessages);
+      res.json(message);
+    } else {
+      res.status(404).json({ error: "Message not found" });
+    }
+  });
+  app.delete("/api/support/:id", async (req, res) => {
+    db.supportMessages = db.supportMessages.filter((m: any) => m.id !== parseInt(req.params.id));
+    saveData(db);
+    await saveToSupabase("supportMessages", db.supportMessages);
+    res.json({ success: true });
   });
 
   // Vite middleware for development
