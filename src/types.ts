@@ -92,7 +92,7 @@ export interface Order {
   deliveryType: "delivery" | "pickup";
   deliveryAreaId?: string;
   address: string;
-  status: "Pedido Recebido" | "Recusado" | "Em Andamento" | "Pronto";
+  status: "Pedido Recebido" | "Recusado" | "Em Andamento" | "Pronto" | "Entregue";
   trackingCode: string;
   totalPrice: number;
   deliveryDate?: string;
@@ -101,15 +101,12 @@ export interface Order {
   createdAt: string;
   fileUrl?: string;
   message?: string;
-  serviceType?: "print" | "copy" | "document";
-  pages?: number;
-  type?: string;
-  colorComplexity?: "simple" | "heavy";
   adminMessages?: {
     id: string;
     text: string;
     createdAt: string;
-    sender: "admin" | "support";
+    sender: "admin" | "support" | "customer";
+    attachment?: string;
   }[];
 }
 
@@ -124,7 +121,8 @@ export interface SupportResponse {
   id: string;
   text: string;
   createdAt: string;
-  sender: "admin" | "support";
+  sender: "admin" | "support" | "customer";
+  attachment?: string;
 }
 
 export interface SupportMessage {

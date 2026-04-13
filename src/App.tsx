@@ -1,5 +1,6 @@
 import { useState, useEffect, FormEvent } from "react";
 import { BrowserRouter as Router, Routes, Route, Link, useNavigate, useSearchParams } from "react-router-dom";
+import { jsPDF } from "jspdf";
 import { 
   Phone, 
   MessageCircle, 
@@ -43,7 +44,8 @@ import {
   Info,
   Shield,
   FileSearch,
-  Bell
+  Bell,
+  Paperclip
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { Settings, Prices, Order, Partner, Afiliado, Stats, SupportMessage, ServicePrice, OrderItem, NewsItem, GalleryImage } from "./types";
@@ -90,6 +92,76 @@ const api = {
   getNews: () => fetch("/api/news").then(res => res.json()),
   saveNews: (data: any) => fetch("/api/news", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(res => res.json()),
   deleteNews: (id: number) => fetch(`/api/news/${id}`, { method: "DELETE" }).then(res => res.json()),
+};
+
+// --- PDF Helper ---
+const generateOrderPDF = (order: Order, settings: Settings) => {
+  const doc = new jsPDF();
+  
+  // Header
+  doc.setFontSize(22);
+  doc.setTextColor(220, 38, 38); // Red-600
+  doc.text(settings.logo, 105, 20, { align: "center" });
+  
+  doc.setFontSize(10);
+  doc.setTextColor(100);
+  doc.text(settings.slogan || "Serviços de Impressão & Cópias", 105, 28, { align: "center" });
+  
+  // Title
+  doc.setFontSize(16);
+  doc.setTextColor(0);
+  doc.text("Comprovativo de Pedido", 105, 45, { align: "center" });
+  
+  // Order Info
+  doc.setFontSize(12);
+  doc.text(`Código de Rastreio: ${order.trackingCode}`, 20, 60);
+  doc.text(`Data: ${new Date(order.createdAt).toLocaleDateString()}`, 20, 70);
+  doc.text(`Cliente: ${order.customerName}`, 20, 80);
+  doc.text(`WhatsApp: ${order.whatsapp}`, 20, 90);
+  
+  // Items
+  doc.setFontSize(14);
+  doc.text("Itens do Pedido:", 20, 110);
+  
+  let y = 120;
+  doc.setFontSize(11);
+  if (order.items && order.items.length > 0) {
+    order.items.forEach((item, index) => {
+      doc.text(`${index + 1}. ${item.serviceName} - ${item.pages} pág. (${item.type})`, 25, y);
+      doc.text(`${item.price} Kz`, 170, y, { align: "right" });
+      y += 10;
+    });
+  } else {
+    // Fallback for old orders
+    const serviceName = (order as any).serviceType === "print" ? "Impressão" : "Cópia";
+    doc.text(`1. ${serviceName} - ${(order as any).pages || 0} pág. (${(order as any).type || "N/A"})`, 25, y);
+    doc.text(`${order.totalPrice} Kz`, 170, y, { align: "right" });
+    y += 10;
+  }
+  
+  // Total
+  doc.setDrawColor(200);
+  doc.line(20, y, 190, y);
+  y += 10;
+  doc.setFontSize(14);
+  doc.text("Total:", 20, y);
+  doc.text(`${order.totalPrice} Kz`, 170, y, { align: "right" });
+  
+  // Delivery
+  y += 20;
+  doc.setFontSize(12);
+  doc.text(`Tipo de Entrega: ${order.deliveryType === "delivery" ? "Entrega ao Domicílio" : "Levantamento na Loja"}`, 20, y);
+  if (order.deliveryType === "delivery") {
+    y += 10;
+    doc.text(`Endereço: ${order.address}`, 20, y);
+  }
+  
+  // Footer
+  doc.setFontSize(10);
+  doc.setTextColor(150);
+  doc.text("Obrigado pela sua preferência!", 105, 280, { align: "center" });
+  
+  doc.save(`pedido-${order.trackingCode}.pdf`);
 };
 
 // --- Components ---
@@ -283,6 +355,7 @@ const OrderForm = ({ settings, prices, cart, clearCart }: { settings: Settings, 
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [lastTrackingCode, setLastTrackingCode] = useState("");
+  const [lastOrder, setLastOrder] = useState<Order | null>(null);
   const [whatsappUrl, setWhatsappUrl] = useState("");
 
   useEffect(() => {
@@ -353,7 +426,9 @@ const OrderForm = ({ settings, prices, cart, clearCart }: { settings: Settings, 
         fileUrl,
         trackingCode,
         totalPrice: hasCartItems ? cart.reduce((sum, item) => sum + item.price, 0) : calculateTotal(),
-        items: hasCartItems ? cart : undefined
+        items: hasCartItems ? cart : [],
+        createdAt: new Date().toISOString(),
+        status: "Pedido Recebido"
       };
 
       let itemsSummary = "";
@@ -373,9 +448,10 @@ const OrderForm = ({ settings, prices, cart, clearCart }: { settings: Settings, 
       
       setWhatsappUrl(`https://wa.me/${settings.whatsapp.replace(/\s/g, '')}?text=${encodeURIComponent(waMsg)}`);
 
-      await api.createOrder(orderData);
+      const createdOrder = await api.createOrder(orderData);
       if (hasCartItems) clearCart();
       setLastTrackingCode(trackingCode);
+      setLastOrder(createdOrder);
       setSuccess(true);
       setFormData({
         customerName: "",
@@ -440,6 +516,15 @@ const OrderForm = ({ settings, prices, cart, clearCart }: { settings: Settings, 
                     <MessageCircle className="w-5 h-5" />
                     <span>WhatsApp</span>
                   </a>
+                  {lastOrder && (
+                    <button 
+                      onClick={() => generateOrderPDF(lastOrder, settings)}
+                      className="w-full sm:w-auto px-8 py-4 bg-red-600 text-white rounded-2xl font-bold hover:bg-red-700 transition-all flex items-center justify-center space-x-2 shadow-lg shadow-red-600/20"
+                    >
+                      <FileText className="w-5 h-5" />
+                      <span>Baixar PDF</span>
+                    </button>
+                  )}
                   <button 
                     onClick={() => setSuccess(false)}
                     className="w-full sm:w-auto px-8 py-4 bg-foreground text-background rounded-2xl font-bold hover:opacity-90 transition-all"
@@ -737,6 +822,45 @@ const SupportForm = () => {
   const [activeTab, setActiveTab] = useState<"send" | "check">("send");
   const [checkCode, setCheckCode] = useState("");
   const [checkedMessage, setCheckedMessage] = useState<SupportMessage | null>(null);
+  const [newMessage, setNewMessage] = useState("");
+  const [attachment, setAttachment] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+
+  const handleSendMessage = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!newMessage.trim() && !attachment) return;
+    if (!checkedMessage) return;
+
+    try {
+      const response = {
+        id: Date.now().toString(),
+        text: newMessage,
+        createdAt: new Date().toISOString(),
+        sender: "customer" as const,
+        attachment: attachment || undefined
+      };
+      const updated = await api.updateSupportMessage(checkedMessage.id, {
+        responses: [...(checkedMessage.responses || []), response]
+      });
+      setCheckedMessage(updated);
+      setNewMessage("");
+      setAttachment(null);
+    } catch (err) {
+      alert("Erro ao enviar mensagem.");
+    }
+  };
+
+  const handleFileUpload = async (file: File) => {
+    setIsUploading(true);
+    try {
+      const res = await api.uploadFile(file);
+      setAttachment(res.url);
+    } catch (err) {
+      alert("Erro ao carregar ficheiro.");
+    } finally {
+      setIsUploading(false);
+    }
+  };
   const [checking, setChecking] = useState(false);
   const [checkError, setCheckError] = useState("");
 
@@ -955,40 +1079,101 @@ const SupportForm = () => {
                   <motion.div 
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="space-y-8"
+                    className="space-y-12"
                   >
                     <div className="p-8 bg-muted rounded-[2rem] border border-border">
                       <div className="flex justify-between items-start mb-6">
                         <div>
-                          <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest mb-1">Sua Mensagem</p>
+                          <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest mb-1">Sua Mensagem Original</p>
                           <p className="text-foreground font-medium">{checkedMessage.message}</p>
                         </div>
                         <span className="text-[10px] text-muted-foreground">{new Date(checkedMessage.createdAt).toLocaleDateString()}</span>
                       </div>
+                    </div>
+
+                    <div className="space-y-8">
+                      <h4 className="text-xl font-bold text-foreground flex items-center space-x-3">
+                        <MessageCircle className="w-6 h-6 text-red-600" />
+                        <span>Conversa com o Suporte</span>
+                      </h4>
                       
-                      <div className="space-y-4 pt-6 border-t border-border">
-                        <h4 className="text-sm font-black text-foreground uppercase tracking-widest flex items-center space-x-2">
-                          <MessageCircle className="w-4 h-4 text-red-600" />
-                          <span>Respostas do Suporte</span>
-                        </h4>
-                        
-                        {checkedMessage.responses && checkedMessage.responses.length > 0 ? (
-                          <div className="space-y-4">
-                            {checkedMessage.responses.map(resp => (
-                              <div key={resp.id} className="bg-card p-6 rounded-2xl border border-border shadow-sm relative overflow-hidden">
-                                <div className="absolute top-0 left-0 w-1 h-full bg-red-600" />
-                                <p className="text-foreground leading-relaxed">{resp.text}</p>
-                                <p className="text-[10px] text-muted-foreground mt-4">{new Date(resp.createdAt).toLocaleString()}</p>
-                              </div>
-                            ))}
+                      <div className="space-y-6 mb-8 max-h-[500px] overflow-y-auto pr-4 custom-scrollbar">
+                        {checkedMessage.responses?.map((resp, idx) => (
+                          <div key={idx} className={`flex ${resp.sender === 'customer' ? 'justify-end' : 'justify-start'}`}>
+                            <div className={`max-w-[85%] p-6 rounded-3xl border ${
+                              resp.sender === 'customer' 
+                                ? 'bg-red-600 text-white rounded-tr-none border-red-600 shadow-lg shadow-red-600/20' 
+                                : 'bg-muted text-foreground rounded-tl-none border-border'
+                            }`}>
+                              <p className={`text-[10px] font-black uppercase tracking-widest mb-2 ${resp.sender === 'customer' ? 'text-white/70' : 'text-muted-foreground'}`}>
+                                {resp.sender === 'customer' ? 'Você' : 'Suporte'}
+                              </p>
+                              <p className="leading-relaxed">{resp.text}</p>
+                              {resp.attachment && (
+                                <div className="mt-4 pt-4 border-t border-white/20">
+                                  <a href={resp.attachment} target="_blank" rel="noreferrer" className={`inline-flex items-center space-x-2 text-xs font-bold ${resp.sender === 'customer' ? 'text-white hover:underline' : 'text-red-600 hover:underline'}`}>
+                                    <ImageIcon className="w-4 h-4" />
+                                    <span>Ver Anexo</span>
+                                  </a>
+                                </div>
+                              )}
+                              <p className={`text-[10px] mt-4 ${resp.sender === 'customer' ? 'text-white/50' : 'text-muted-foreground'}`}>
+                                {new Date(resp.createdAt).toLocaleString()}
+                              </p>
+                            </div>
                           </div>
-                        ) : (
-                          <div className="bg-card p-8 rounded-2xl border border-dashed border-border text-center">
-                            <Clock className="w-8 h-8 text-muted-foreground/30 mx-auto mb-2" />
-                            <p className="text-muted-foreground text-sm italic">Aguardando resposta da nossa equipa...</p>
+                        ))}
+                        {(!checkedMessage.responses || checkedMessage.responses.length === 0) && (
+                          <div className="bg-card p-12 rounded-3xl border border-dashed border-border text-center">
+                            <Clock className="w-12 h-12 text-muted-foreground/20 mx-auto mb-4" />
+                            <p className="text-muted-foreground italic">Aguardando a primeira resposta do suporte...</p>
                           </div>
                         )}
                       </div>
+
+                      <form onSubmit={handleSendMessage} className="space-y-4">
+                        <div className="relative">
+                          <textarea 
+                            value={newMessage}
+                            onChange={e => setNewMessage(e.target.value)}
+                            placeholder="Escreva a sua resposta..."
+                            className="w-full px-8 py-6 bg-muted border border-border rounded-[2rem] outline-none focus:border-red-600 transition-all text-foreground resize-none pr-32"
+                            rows={3}
+                          />
+                          <div className="absolute right-4 bottom-4 flex items-center space-x-2">
+                            <label className="p-3 bg-card border border-border rounded-xl cursor-pointer hover:bg-muted transition-colors">
+                              <input 
+                                type="file" 
+                                className="hidden" 
+                                onChange={e => e.target.files?.[0] && handleFileUpload(e.target.files[0])}
+                              />
+                              {isUploading ? (
+                                <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: "linear" }} className="w-5 h-5 border-2 border-red-600 border-t-transparent rounded-full" />
+                              ) : (
+                                <ImageIcon className="w-5 h-5 text-muted-foreground" />
+                              )}
+                            </label>
+                            <button 
+                              type="submit"
+                              disabled={!newMessage.trim() && !attachment}
+                              className="p-3 bg-red-600 text-white rounded-xl hover:bg-red-700 transition-all disabled:opacity-50"
+                            >
+                              <Send className="w-5 h-5" />
+                            </button>
+                          </div>
+                        </div>
+                        {attachment && (
+                          <div className="flex items-center justify-between p-4 bg-red-600/5 border border-red-600/20 rounded-2xl">
+                            <div className="flex items-center space-x-3">
+                              <ImageIcon className="w-5 h-5 text-red-600" />
+                              <span className="text-sm font-bold text-red-600">Ficheiro pronto para enviar</span>
+                            </div>
+                            <button onClick={() => setAttachment(null)} className="p-1 hover:bg-red-600/10 rounded-full">
+                              <X className="w-4 h-4 text-red-600" />
+                            </button>
+                          </div>
+                        )}
+                      </form>
                     </div>
                   </motion.div>
                 )}
@@ -1048,6 +1233,7 @@ const Footer = ({ settings }: { settings: Settings }) => (
     </div>
   </footer>
 );
+
 
 const HomePage = ({ settings, prices }: { settings: Settings, prices: Prices }) => {
   return (
@@ -1257,13 +1443,17 @@ const NewsPage = ({ news }: { news: NewsItem[] }) => (
     </div>
   </div>
 );
-
 const TermsPage = ({ settings }: { settings: Settings }) => (
   <div className="pt-32 pb-24 bg-background min-h-screen">
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-      <h1 className="text-4xl font-bold text-foreground mb-8">Termos de Serviço</h1>
-      <div className="prose prose-red dark:prose-invert max-w-none text-muted-foreground whitespace-pre-wrap">
-        {settings.terms || "Os termos de serviço serão publicados em breve."}
+      <div className="text-center mb-16">
+        <h1 className="text-4xl md:text-5xl font-black text-foreground tracking-tighter mb-4">Termos de Serviço</h1>
+        <p className="text-lg text-muted-foreground">Por favor, leia atentamente os nossos termos de utilização.</p>
+      </div>
+      <div className="bg-card p-8 md:p-12 rounded-[2.5rem] border border-border shadow-xl shadow-red-600/5">
+        <div className="prose prose-red dark:prose-invert max-w-none text-foreground leading-relaxed whitespace-pre-wrap text-lg">
+          {settings.terms || "Os termos de serviço serão publicados em breve pelo administrador."}
+        </div>
       </div>
     </div>
   </div>
@@ -1272,9 +1462,14 @@ const TermsPage = ({ settings }: { settings: Settings }) => (
 const PrivacyPage = ({ settings }: { settings: Settings }) => (
   <div className="pt-32 pb-24 bg-background min-h-screen">
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-      <h1 className="text-4xl font-bold text-foreground mb-8">Política de Privacidade</h1>
-      <div className="prose prose-red dark:prose-invert max-w-none text-muted-foreground whitespace-pre-wrap">
-        {settings.privacy || "A política de privacidade será publicada em breve."}
+      <div className="text-center mb-16">
+        <h1 className="text-4xl md:text-5xl font-black text-foreground tracking-tighter mb-4">Política de Privacidade</h1>
+        <p className="text-lg text-muted-foreground">A sua privacidade e a segurança dos seus dados são a nossa prioridade.</p>
+      </div>
+      <div className="bg-card p-8 md:p-12 rounded-[2.5rem] border border-border shadow-xl shadow-red-600/5">
+        <div className="prose prose-red dark:prose-invert max-w-none text-foreground leading-relaxed whitespace-pre-wrap text-lg">
+          {settings.privacy || "A política de privacidade será publicada em breve pelo administrador."}
+        </div>
       </div>
     </div>
   </div>
@@ -1283,9 +1478,46 @@ const PrivacyPage = ({ settings }: { settings: Settings }) => (
 const HowItWorksPage = ({ settings }: { settings: Settings }) => (
   <div className="pt-32 pb-24 bg-background min-h-screen">
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-      <h1 className="text-4xl font-bold text-foreground mb-8">Como Funciona</h1>
-      <div className="prose prose-red dark:prose-invert max-w-none text-muted-foreground whitespace-pre-wrap">
-        {settings.howItWorks || "As instruções de como o site funciona serão publicadas em breve."}
+      <div className="text-center mb-16">
+        <h1 className="text-4xl md:text-5xl font-black text-foreground tracking-tighter mb-4">Como Funciona</h1>
+        <p className="text-lg text-muted-foreground">Siga os passos abaixo para realizar o seu pedido com facilidade.</p>
+      </div>
+
+      <div className="grid grid-cols-1 gap-12 mb-20">
+        <div className="bg-card p-8 md:p-12 rounded-[2.5rem] border border-border shadow-xl shadow-red-600/5">
+          <div className="prose prose-red dark:prose-invert max-w-none text-foreground leading-relaxed whitespace-pre-wrap text-lg">
+            {settings.howItWorks || "As instruções de como o site funciona serão publicadas em breve pelo administrador."}
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-red-600 rounded-[2.5rem] p-8 md:p-12 text-white flex flex-col md:flex-row items-center justify-between gap-8 shadow-2xl shadow-red-600/40">
+        <div className="text-center md:text-left">
+          <h3 className="text-2xl md:text-3xl font-black tracking-tighter mb-2">Ainda tem dúvidas?</h3>
+          <p className="text-red-100 font-medium">Entre em contacto direto com o nosso administrador para mais informações.</p>
+        </div>
+        <div className="flex flex-col sm:flex-row gap-4 w-full md:w-auto">
+          {settings.whatsapp && (
+            <a 
+              href={`https://wa.me/${settings.whatsapp.replace(/\s+/g, '')}`} 
+              target="_blank" 
+              rel="noreferrer"
+              className="flex items-center justify-center space-x-3 px-8 py-4 bg-white text-red-600 rounded-2xl font-bold hover:bg-red-50 transition-all shadow-lg"
+            >
+              <MessageCircle className="w-6 h-6" />
+              <span>WhatsApp</span>
+            </a>
+          )}
+          {settings.phone && (
+            <a 
+              href={`tel:${settings.phone.replace(/\s+/g, '')}`} 
+              className="flex items-center justify-center space-x-3 px-8 py-4 bg-red-700 text-white rounded-2xl font-bold hover:bg-red-800 transition-all border border-red-500/30"
+            >
+              <Phone className="w-6 h-6" />
+              <span>Ligar Agora</span>
+            </a>
+          )}
+        </div>
       </div>
     </div>
   </div>
@@ -1750,10 +1982,7 @@ const AdminDashboard = ({
                         <td className="px-8 py-4 font-medium text-foreground">
                           {order.customerName}
                           <div className="text-[10px] text-muted-foreground">
-                            {order.items && order.items.length > 0 
-                              ? order.items.map(i => i.serviceName).join(", ") 
-                              : (order.serviceType === "print" ? "Impressão" : order.serviceType === "copy" ? "Cópia" : "Documento")} 
-                            | {order.deliveryType === "delivery" ? "Entrega" : "Retirada"}
+                            {order.items && order.items.length > 0 ? order.items.map(i => i.serviceName).join(", ") : ((order as any).serviceType === "print" ? "Impressão" : (order as any).serviceType === "copy" ? "Cópia" : "Documento")} | {order.deliveryType === "delivery" ? "Entrega" : "Retirada"}
                           </div>
                         </td>
                         <td className="px-8 py-4">
@@ -1851,12 +2080,14 @@ const AdminDashboard = ({
                               {order.items && order.items.length > 0 ? (
                                 <div className="space-y-1">
                                   {order.items.map((item, idx) => (
-                                    <div key={idx} className="text-sm font-medium">{item.serviceName}</div>
+                                    <div key={idx} className="text-xs">
+                                      {item.serviceName}
+                                    </div>
                                   ))}
                                 </div>
                               ) : (
-                                order.serviceType === "print" ? "Impressão" : 
-                                order.serviceType === "copy" ? "Cópia" : "Documento"
+                                (order as any).serviceType === "print" ? "Impressão" : 
+                                (order as any).serviceType === "copy" ? "Cópia" : "Documento"
                               )}
                             </td>
                             <td className="px-8 py-4 text-foreground">{order.deliveryType === "delivery" ? "Entrega" : "Retirada"}</td>
@@ -1864,22 +2095,26 @@ const AdminDashboard = ({
                               {order.items && order.items.length > 0 ? (
                                 <div className="space-y-1">
                                   {order.items.map((item, idx) => (
-                                    <div key={idx} className="text-sm">{item.pages || "-"}</div>
+                                    <div key={idx} className="text-xs">
+                                      {item.serviceName === "Criação de Documento" ? "-" : item.pages}
+                                    </div>
                                   ))}
                                 </div>
                               ) : (
-                                order.serviceType === "document" ? "-" : order.pages
+                                (order as any).serviceType === "document" ? "-" : (order as any).pages
                               )}
                             </td>
                             <td className="px-8 py-4 text-foreground uppercase">
                               {order.items && order.items.length > 0 ? (
                                 <div className="space-y-1">
                                   {order.items.map((item, idx) => (
-                                    <div key={idx} className="text-sm">{item.type || "-"}</div>
+                                    <div key={idx} className="text-[10px]">
+                                      {item.serviceName === "Criação de Documento" ? "-" : item.type}
+                                    </div>
                                   ))}
                                 </div>
                               ) : (
-                                order.serviceType === "document" ? "-" : `${order.type} ${order.type === 'color' ? `(${order.colorComplexity === 'heavy' ? 'Pesada' : 'Simples'})` : ''}`
+                                (order as any).serviceType === "document" ? "-" : `${(order as any).type} ${(order as any).type === 'color' ? `(${(order as any).colorComplexity === 'heavy' ? 'Pesada' : 'Simples'})` : ''}`
                               )}
                             </td>
                             <td className="px-8 py-4 text-foreground font-bold">{order.totalPrice} Kz</td>
@@ -1896,6 +2131,7 @@ const AdminDashboard = ({
                                 <option value="Em Andamento">Em Andamento</option>
                                 <option value="Pronto">Pronto</option>
                                 <option value="Recusado">Recusado</option>
+                                <option value="Entregue">Entregue</option>
                               </select>
                             </td>
                             <td className="px-8 py-4">
@@ -1906,6 +2142,13 @@ const AdminDashboard = ({
                                   title="Enviar Mensagem"
                                 >
                                   <MessageCircle className="w-5 h-5" />
+                                </button>
+                                <button 
+                                  onClick={() => generateOrderPDF(order, settings)}
+                                  className="p-2 text-muted-foreground hover:text-red-600 transition-colors"
+                                  title="Baixar PDF"
+                                >
+                                  <FileText className="w-5 h-5" />
                                 </button>
                                 <button 
                                   onClick={async () => {
@@ -1955,8 +2198,33 @@ const AdminDashboard = ({
                   <div className="max-h-60 overflow-y-auto space-y-4 pr-2">
                     {messagingOrder.adminMessages?.length ? (
                       messagingOrder.adminMessages.map(msg => (
-                        <div key={msg.id} className="bg-muted p-4 rounded-2xl border border-border">
+                        <div 
+                          key={msg.id} 
+                          className={`p-4 rounded-2xl border ${
+                            msg.sender === 'customer' 
+                              ? "bg-red-500/5 border-red-500/10 ml-0 mr-8" 
+                              : "bg-muted border-border ml-8 mr-0"
+                          }`}
+                        >
+                          <div className="flex justify-between items-start mb-1">
+                            <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+                              {msg.sender === 'customer' ? 'Cliente' : 'Admin'}
+                            </span>
+                          </div>
                           <p className="text-sm text-foreground">{msg.text}</p>
+                          {msg.attachment && (
+                            <div className="mt-2 p-2 bg-background/50 rounded-xl border border-border flex items-center space-x-2">
+                              <Paperclip className="w-3 h-3 text-red-600" />
+                              <a 
+                                href={msg.attachment} 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                className="text-[10px] text-red-600 hover:underline truncate"
+                              >
+                                Ver Anexo
+                              </a>
+                            </div>
+                          )}
                           <p className="text-[10px] text-muted-foreground mt-2">
                             {new Date(msg.createdAt).toLocaleString()}
                           </p>
@@ -2025,22 +2293,68 @@ const AdminDashboard = ({
             <div className="flex justify-between items-center mb-8">
               <h3 className="text-xl font-bold text-foreground">Gestão de Notícias</h3>
               <button 
-                onClick={async () => {
-                  const title = prompt("Título da notícia:");
-                  if (title) {
-                    const content = prompt("Conteúdo da notícia:");
-                    if (content) {
-                      await api.saveNews({ title, content, date: new Date().toISOString() });
-                      fetchData();
-                    }
-                  }
-                }}
+                onClick={() => setIsAddingNews(true)}
                 className="flex items-center space-x-2 px-4 py-2 bg-red-600 text-white rounded-xl font-bold text-sm hover:bg-red-700 transition-all"
               >
                 <Plus className="w-4 h-4" />
                 <span>Nova Notícia</span>
               </button>
             </div>
+
+            <AnimatePresence>
+              {isAddingNews && (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+                  <motion.div 
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.95 }}
+                    className="bg-card rounded-[2.5rem] shadow-2xl w-full max-w-lg overflow-hidden border border-border"
+                  >
+                    <div className="p-8 border-b border-border flex justify-between items-center">
+                      <h3 className="text-xl font-bold text-foreground">Nova Notícia</h3>
+                      <button onClick={() => setIsAddingNews(false)} className="p-2 hover:bg-muted rounded-full transition-colors">
+                        <X className="w-6 h-6 text-muted-foreground" />
+                      </button>
+                    </div>
+                    <form className="p-8 space-y-6" onSubmit={async (e) => {
+                      e.preventDefault();
+                      await api.saveNews(newNews);
+                      setIsAddingNews(false);
+                      setNewNews({ title: "", content: "", date: new Date().toISOString().split('T')[0], active: true });
+                      fetchData();
+                    }}>
+                      <div className="space-y-4">
+                        <div>
+                          <label className="block text-sm font-bold text-foreground mb-2">Título</label>
+                          <input 
+                            type="text" 
+                            required
+                            className="w-full px-6 py-4 bg-muted border border-border rounded-2xl outline-none focus:border-red-600 transition-all text-foreground"
+                            value={newNews.title}
+                            onChange={e => setNewNews({...newNews, title: e.target.value})}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-bold text-foreground mb-2">Conteúdo</label>
+                          <textarea 
+                            required
+                            className="w-full px-6 py-4 bg-muted border border-border rounded-2xl outline-none focus:border-red-600 transition-all resize-none h-40 text-foreground"
+                            value={newNews.content}
+                            onChange={e => setNewNews({...newNews, content: e.target.value})}
+                          />
+                        </div>
+                      </div>
+                      <button 
+                        type="submit"
+                        className="w-full py-5 bg-red-600 text-white rounded-2xl font-bold text-lg hover:bg-red-700 transition-all"
+                      >
+                        Publicar Notícia
+                      </button>
+                    </form>
+                  </motion.div>
+                </div>
+              )}
+            </AnimatePresence>
 
             <div className="space-y-4">
               {news.map(item => (
@@ -2261,10 +2575,35 @@ const AdminDashboard = ({
                         
                         {msg.responses && msg.responses.length > 0 && (
                           <div className="mt-6 space-y-4">
-                            <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest ml-2">Respostas Enviadas</p>
+                            <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest ml-2">Histórico de Conversa</p>
                             {msg.responses.map(resp => (
-                              <div key={resp.id} className="bg-red-500/10 p-4 rounded-2xl border border-red-500/20">
+                              <div 
+                                key={resp.id} 
+                                className={`p-4 rounded-2xl border ${
+                                  resp.sender === 'customer' 
+                                    ? "bg-muted border-border ml-0 mr-8" 
+                                    : "bg-red-500/10 border-red-500/20 ml-8 mr-0"
+                                }`}
+                              >
+                                <div className="flex justify-between items-start mb-1">
+                                  <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+                                    {resp.sender === 'customer' ? 'Cliente' : 'Admin'}
+                                  </span>
+                                </div>
                                 <p className="text-sm text-foreground">{resp.text}</p>
+                                {resp.attachment && (
+                                  <div className="mt-2 p-2 bg-background/50 rounded-xl border border-border flex items-center space-x-2">
+                                    <Paperclip className="w-3 h-3 text-red-600" />
+                                    <a 
+                                      href={resp.attachment} 
+                                      target="_blank" 
+                                      rel="noopener noreferrer"
+                                      className="text-[10px] text-red-600 hover:underline truncate"
+                                    >
+                                      Ver Anexo
+                                    </a>
+                                  </div>
+                                )}
                                 <p className="text-[10px] text-muted-foreground mt-2">{new Date(resp.createdAt).toLocaleString()}</p>
                               </div>
                             ))}
@@ -2337,6 +2676,46 @@ const AdminDashboard = ({
                   <div className="bg-muted p-6 rounded-2xl border border-border">
                     <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest mb-2">Mensagem Original</p>
                     <p className="text-sm text-foreground italic">"{respondingMessage.message}"</p>
+                  </div>
+
+                  <div className="max-h-60 overflow-y-auto space-y-4 pr-2">
+                    {respondingMessage.responses?.length ? (
+                      respondingMessage.responses.map(resp => (
+                        <div 
+                          key={resp.id} 
+                          className={`p-4 rounded-2xl border ${
+                            resp.sender === 'customer' 
+                              ? "bg-red-500/5 border-red-500/10 ml-0 mr-8" 
+                              : "bg-muted border-border ml-8 mr-0"
+                          }`}
+                        >
+                          <div className="flex justify-between items-start mb-1">
+                            <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+                              {resp.sender === 'customer' ? 'Cliente' : 'Admin'}
+                            </span>
+                          </div>
+                          <p className="text-sm text-foreground">{resp.text}</p>
+                          {resp.attachment && (
+                            <div className="mt-2 p-2 bg-background/50 rounded-xl border border-border flex items-center space-x-2">
+                              <Paperclip className="w-3 h-3 text-red-600" />
+                              <a 
+                                href={resp.attachment} 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                className="text-[10px] text-red-600 hover:underline truncate"
+                              >
+                                Ver Anexo
+                              </a>
+                            </div>
+                          )}
+                          <p className="text-[10px] text-muted-foreground mt-2">
+                            {new Date(resp.createdAt).toLocaleString()}
+                          </p>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-center text-muted-foreground text-sm py-4 italic">Nenhuma resposta enviada ainda.</p>
+                    )}
                   </div>
 
                   <div className="space-y-4">
@@ -2884,11 +3263,90 @@ const AdminDashboard = ({
   );
 };
 
-const TrackingPage = ({ settings }: { settings: Settings }) => {
+const TrackingPage = ({ settings, prices }: { settings: Settings, prices: ServicePrice[] }) => {
   const [code, setCode] = useState("");
   const [order, setOrder] = useState<Order | null>(null);
+  const [supportMessage, setSupportMessage] = useState<SupportMessage | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [newMessage, setNewMessage] = useState("");
+  const [attachment, setAttachment] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+
+  const [isEditing, setIsEditing] = useState(false);
+  const [editData, setEditData] = useState<Partial<Order>>({ 
+    customerName: "", 
+    whatsapp: "", 
+    address: "", 
+    deliveryType: "pickup",
+    items: [],
+    totalPrice: 0
+  });
+
+  const calculateItemPrice = (serviceId: string, pages: number) => {
+    const service = prices.find(p => p.id === serviceId);
+    if (!service) return 0;
+
+    const single = service.single || 0;
+    const promoPrice = service.promo?.price || 0;
+    const promoPages = service.promo?.pages || 1;
+
+    let total = 0;
+    if (promoPages > 1) {
+      const numPromos = Math.floor(pages / promoPages);
+      const remainder = pages % promoPages;
+      total = numPromos * promoPrice;
+      if (remainder > 0) {
+        const remainderCost = remainder * single;
+        total += Math.min(remainderCost, promoPrice);
+      }
+    } else {
+      total = pages * single;
+    }
+    return total;
+  };
+
+  const updateEditItem = (index: number, updates: Partial<OrderItem>) => {
+    if (!editData.items) return;
+    const newItems = [...editData.items];
+    newItems[index] = { ...newItems[index], ...updates };
+    
+    if (updates.pages !== undefined || updates.serviceId !== undefined) {
+      const item = newItems[index];
+      const service = prices?.find(p => p.id === item.serviceId);
+      if (service) {
+        item.serviceName = service.name;
+        item.type = service.id;
+        item.price = calculateItemPrice(item.serviceId, item.pages);
+      }
+    }
+    
+    const newTotal = newItems.reduce((sum, item) => sum + item.price, 0);
+    setEditData({ ...editData, items: newItems, totalPrice: newTotal });
+  };
+
+  const removeEditItem = (index: number) => {
+    if (!editData.items) return;
+    const newItems = editData.items.filter((_, i) => i !== index);
+    const newTotal = newItems.reduce((sum, item) => sum + item.price, 0);
+    setEditData({ ...editData, items: newItems, totalPrice: newTotal });
+  };
+
+  const addEditItem = (serviceId: string) => {
+    const service = prices.find(p => p.id === serviceId);
+    if (!service) return;
+
+    const newItem: OrderItem = {
+      serviceId: service.id,
+      serviceName: service.name,
+      pages: 1,
+      type: service.id,
+      price: service.single
+    };
+    const newItems = [...(editData.items || []), newItem];
+    const newTotal = newItems.reduce((sum, item) => sum + item.price, 0);
+    setEditData({ ...editData, items: newItems, totalPrice: newTotal });
+  };
 
   const handleSearch = async (e: FormEvent) => {
     e.preventDefault();
@@ -2897,21 +3355,141 @@ const TrackingPage = ({ settings }: { settings: Settings }) => {
     setLoading(true);
     setError("");
     setOrder(null);
+    setSupportMessage(null);
     
     try {
-      const orders: Order[] = await api.getOrders();
-      const found = orders.find(o => o.trackingCode?.toUpperCase() === code.toUpperCase());
+      const [orders, supportMessages]: [Order[], SupportMessage[]] = await Promise.all([
+        api.getOrders(),
+        api.getSupportMessages()
+      ]);
+
+      const foundOrder = orders.find(o => o.trackingCode?.toUpperCase() === code.toUpperCase());
+      const foundSupport = supportMessages.find(m => m.ticketCode?.toUpperCase() === code.toUpperCase());
       
-      if (found) {
-        setOrder(found);
+      if (foundOrder) {
+        setOrder(foundOrder);
+        let initialItems = foundOrder.items || [];
+        if (initialItems.length === 0 && (foundOrder as any).serviceType) {
+          const service = prices.find(p => p.id === (foundOrder as any).type);
+          initialItems = [{
+            serviceId: (foundOrder as any).type || "bw",
+            serviceName: service ? service.name : ((foundOrder as any).serviceType === "print" ? "Impressão" : "Cópia"),
+            pages: (foundOrder as any).pages || 0,
+            type: (foundOrder as any).type || "bw",
+            price: foundOrder.totalPrice
+          }];
+        }
+        setEditData({
+          customerName: foundOrder.customerName,
+          whatsapp: foundOrder.whatsapp,
+          address: foundOrder.address,
+          deliveryType: foundOrder.deliveryType,
+          items: initialItems,
+          totalPrice: foundOrder.totalPrice
+        });
+      } else if (foundSupport) {
+        setSupportMessage(foundSupport);
       } else {
-        setError("Pedido não encontrado. Verifique o código e tente novamente.");
+        setError("Não encontramos nenhum pedido ou ticket com este código.");
       }
     } catch (err) {
-      console.error("Error searching order:", err);
-      setError("Erro ao procurar pedido. Tente novamente.");
+      console.error("Error searching:", err);
+      setError("Erro ao procurar. Tente novamente.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [successMessage, setSuccessMessage] = useState("");
+
+  const handleSendMessage = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!newMessage.trim() && !attachment) return;
+
+    try {
+      if (order) {
+        const message = {
+          id: Date.now().toString(),
+          text: newMessage,
+          createdAt: new Date().toISOString(),
+          sender: "customer" as const,
+          attachment: attachment || undefined
+        };
+        const updated = await api.updateOrder(order.id, {
+          adminMessages: [...(order.adminMessages || []), message]
+        });
+        setOrder(updated);
+      } else if (supportMessage) {
+        const response = {
+          id: Date.now().toString(),
+          text: newMessage,
+          createdAt: new Date().toISOString(),
+          sender: "customer" as const,
+          attachment: attachment || undefined
+        };
+        const updated = await api.updateSupportMessage(supportMessage.id, {
+          responses: [...(supportMessage.responses || []), response]
+        });
+        setSupportMessage(updated);
+      }
+      setNewMessage("");
+      setAttachment(null);
+    } catch (err) {
+      alert("Erro ao enviar mensagem.");
+    }
+  };
+
+  const handleFileUpload = async (file: File) => {
+    setIsUploading(true);
+    try {
+      const res = await api.uploadFile(file);
+      setAttachment(res.url);
+    } catch (err) {
+      alert("Erro ao carregar ficheiro.");
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handleCancelOrder = async () => {
+    if (!order) return;
+    try {
+      await api.deleteOrder(order.id);
+      setOrder(null);
+      setCode("");
+      setSuccessMessage("Pedido cancelado com sucesso.");
+      setShowCancelConfirm(false);
+      setTimeout(() => setSuccessMessage(""), 5000);
+    } catch (err) {
+      setError("Erro ao cancelar pedido.");
+    }
+  };
+
+  const handleConfirmReceipt = async () => {
+    if (!order) return;
+    try {
+      const updated = await api.updateOrder(order.id, { status: "Entregue" });
+      setOrder(updated);
+      setSuccessMessage("Recebimento confirmado! Obrigado por escolher a nossa gráfica.");
+      setTimeout(() => setSuccessMessage(""), 5000);
+    } catch (err) {
+      setError("Erro ao confirmar recebimento.");
+    }
+  };
+
+  const handleUpdateOrder = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!order) return;
+
+    try {
+      const updated = await api.updateOrder(order.id, editData);
+      setOrder(updated);
+      setIsEditing(false);
+      setSuccessMessage("Pedido atualizado com sucesso.");
+      setTimeout(() => setSuccessMessage(""), 5000);
+    } catch (err) {
+      setError("Erro ao atualizar pedido.");
     }
   };
 
@@ -2919,8 +3497,8 @@ const TrackingPage = ({ settings }: { settings: Settings }) => {
     <div className="pt-32 pb-24 min-h-screen bg-background">
       <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-12">
-          <h1 className="text-4xl md:text-5xl font-black text-foreground mb-4 tracking-tighter">Rastrear Pedido</h1>
-          <p className="text-muted-foreground">Insira o seu código de rastreio de 6 dígitos para ver o estado do seu pedido.</p>
+          <h1 className="text-4xl md:text-5xl font-black text-foreground mb-4 tracking-tighter">Rastrear Pedido ou Ticket</h1>
+          <p className="text-muted-foreground">Insira o seu código de rastreio ou ticket para ver o estado e conversar com o suporte.</p>
         </div>
 
         <div className="bg-card rounded-[2.5rem] shadow-xl border border-border p-8 md:p-12">
@@ -2964,80 +3542,346 @@ const TrackingPage = ({ settings }: { settings: Settings }) => {
               </motion.div>
             )}
 
+            {successMessage && (
+              <motion.div 
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                className="p-6 bg-green-500/10 border border-green-500/20 rounded-3xl text-green-600 font-medium text-center"
+              >
+                {successMessage}
+              </motion.div>
+            )}
+
             {order && (
               <motion.div 
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -20 }}
-                className="space-y-8"
+                className="space-y-12"
               >
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-8 border-b border-border">
-                  <div>
-                    <p className="text-xs font-black text-muted-foreground uppercase tracking-widest mb-1">Cliente</p>
-                    <p className="text-2xl font-bold text-foreground">{order.customerName}</p>
-                  </div>
-                  <div className="md:text-right">
-                    <p className="text-xs font-black text-muted-foreground uppercase tracking-widest mb-1">Estado do Pedido</p>
-                    <span className={`inline-flex px-6 py-2 rounded-full text-sm font-bold ${
-                      order.status === "Pronto" ? "bg-green-500/10 text-green-600" :
-                      order.status === "Pedido Recebido" ? "bg-blue-500/10 text-blue-600" :
-                      order.status === "Em Andamento" ? "bg-amber-500/10 text-amber-600" :
-                      order.status === "Recusado" ? "bg-red-500/10 text-red-600" :
-                      "bg-muted text-muted-foreground"
-                    }`}>
-                      {order.status}
-                    </span>
-                  </div>
-                </div>
+                {isEditing ? (
+                  <form onSubmit={handleUpdateOrder} className="space-y-8 bg-muted/30 p-6 md:p-10 rounded-[2.5rem] border border-border">
+                    <div className="flex items-center justify-between mb-6">
+                      <h3 className="text-2xl font-black text-foreground tracking-tighter">Editar Pedido</h3>
+                      <button type="button" onClick={() => setIsEditing(false)} className="p-2 hover:bg-muted rounded-full transition-colors">
+                        <X className="w-6 h-6 text-muted-foreground" />
+                      </button>
+                    </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-8">
-                  <div>
-                    <p className="text-xs font-black text-muted-foreground uppercase tracking-widest mb-2">Serviço</p>
-                    <p className="text-foreground font-bold">{order.items.map(i => i.serviceName).join(", ")}</p>
-                    <p className="text-sm text-muted-foreground">{order.items.reduce((sum, i) => sum + i.pages, 0)} páginas total</p>
-                  </div>
-                  <div>
-                    <p className="text-xs font-black text-muted-foreground uppercase tracking-widest mb-2">Entrega</p>
-                    <p className="text-foreground font-bold">{order.deliveryType === "delivery" ? "Entrega ao Domicílio" : "Levantamento na Loja"}</p>
-                    {order.deliveryDate && (
-                      <p className="text-sm text-muted-foreground">{new Date(order.deliveryDate).toLocaleDateString('pt-PT')} às {order.deliveryTime}</p>
-                    )}
-                  </div>
-                </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Nome do Cliente</label>
+                        <input 
+                          type="text" 
+                          className="w-full px-5 py-4 bg-card border border-border rounded-2xl outline-none focus:border-red-600 transition-all text-sm text-foreground"
+                          value={editData.customerName}
+                          onChange={e => setEditData({...editData, customerName: e.target.value})}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">WhatsApp</label>
+                        <input 
+                          type="text" 
+                          className="w-full px-5 py-4 bg-card border border-border rounded-2xl outline-none focus:border-red-600 transition-all text-sm text-foreground"
+                          value={editData.whatsapp}
+                          onChange={e => setEditData({...editData, whatsapp: e.target.value})}
+                        />
+                      </div>
+                    </div>
 
-                <div className="bg-muted rounded-3xl p-8 flex items-center justify-between border border-border">
-                  <div>
-                    <p className="text-xs font-black text-muted-foreground uppercase tracking-widest mb-1">Total do Serviço</p>
-                    <p className="text-3xl font-black text-red-600">{order.totalPrice} Kz</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-xs font-black text-muted-foreground uppercase tracking-widest mb-1">Data do Pedido</p>
-                    <p className="text-foreground font-bold">{new Date(order.createdAt).toLocaleDateString('pt-PT')}</p>
-                  </div>
-                </div>
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <h4 className="font-bold text-foreground uppercase text-xs tracking-widest">Serviços e Quantidades</h4>
+                        <div className="flex items-center space-x-2">
+                          <select 
+                            className="px-3 py-2 bg-card border border-border rounded-xl text-xs font-bold text-foreground outline-none focus:border-red-600"
+                            onChange={(e) => {
+                              if (e.target.value) {
+                                addEditItem(e.target.value);
+                                e.target.value = "";
+                              }
+                            }}
+                            defaultValue=""
+                          >
+                            <option value="" disabled>Adicionar Serviço...</option>
+                            {prices.filter(p => p.active).map(p => (
+                              <option key={p.id} value={p.id}>{p.name}</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
 
-                {order.adminMessages && order.adminMessages.length > 0 && (
-                  <div className="space-y-4">
-                    <h4 className="text-lg font-bold text-foreground flex items-center space-x-2">
-                      <MessageCircle className="w-5 h-5 text-red-600" />
-                      <span>Mensagens do Suporte</span>
-                    </h4>
-                    <div className="space-y-3">
-                      {order.adminMessages.map(msg => (
-                        <motion.div 
-                          key={msg.id}
-                          initial={{ opacity: 0, x: -10 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          className="bg-muted p-6 rounded-2xl border border-border relative overflow-hidden"
+                      <div className="space-y-3">
+                        {editData.items?.map((item, idx) => (
+                          <div key={idx} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-card rounded-2xl border border-border gap-4">
+                            <div className="flex-1">
+                              <select 
+                                value={item.serviceId}
+                                onChange={(e) => updateEditItem(idx, { serviceId: e.target.value })}
+                                className="font-bold text-foreground bg-transparent border-none outline-none cursor-pointer hover:text-red-600 transition-colors"
+                              >
+                                {prices.filter(p => p.active).map(p => (
+                                  <option key={p.id} value={p.id}>{p.name}</option>
+                                ))}
+                              </select>
+                              <p className="text-[10px] text-muted-foreground uppercase tracking-widest">{item.price} Kz</p>
+                            </div>
+                            <div className="flex items-center space-x-4">
+                              <div className="flex items-center space-x-2">
+                                <label className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Págs:</label>
+                                <input 
+                                  type="number" 
+                                  min="1"
+                                  className="w-16 px-2 py-1 bg-muted border border-border rounded-lg text-sm font-bold text-foreground outline-none focus:border-red-600"
+                                  value={item.pages}
+                                  onChange={e => updateEditItem(idx, { pages: parseInt(e.target.value) || 1 })}
+                                />
+                              </div>
+                              <button 
+                                type="button"
+                                onClick={() => removeEditItem(idx)}
+                                className="p-2 text-red-600 hover:bg-red-500/10 rounded-xl transition-colors"
+                              >
+                                <Trash className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="space-y-4">
+                      <h4 className="font-bold text-foreground uppercase text-xs tracking-widest">Entrega</h4>
+                      <div className="flex bg-muted p-1 rounded-2xl border border-border">
+                        <button 
+                          type="button"
+                          onClick={() => setEditData({...editData, deliveryType: "delivery"})}
+                          className={`flex-1 py-3 rounded-xl font-bold text-xs transition-all ${editData.deliveryType === "delivery" ? "bg-card text-red-600 shadow-sm" : "text-muted-foreground"}`}
                         >
-                          <div className="absolute top-0 left-0 w-1 h-full bg-red-600" />
-                          <p className="text-foreground leading-relaxed">{msg.text}</p>
-                          <p className="text-[10px] text-muted-foreground mt-4">{new Date(msg.createdAt).toLocaleString('pt-PT')}</p>
-                        </motion.div>
-                      ))}
+                          Entrega ao Domicílio
+                        </button>
+                        <button 
+                          type="button"
+                          onClick={() => setEditData({...editData, deliveryType: "pickup"})}
+                          className={`flex-1 py-3 rounded-xl font-bold text-xs transition-all ${editData.deliveryType === "pickup" ? "bg-card text-red-600 shadow-sm" : "text-muted-foreground"}`}
+                        >
+                          Levantar na Loja
+                        </button>
+                      </div>
+                      {editData.deliveryType === "delivery" && (
+                        <input 
+                          type="text" 
+                          placeholder="Endereço de Entrega"
+                          className="w-full px-5 py-4 bg-card border border-border rounded-2xl outline-none focus:border-red-600 transition-all text-sm text-foreground"
+                          value={editData.address || ""}
+                          onChange={e => setEditData({...editData, address: e.target.value})}
+                        />
+                      )}
+                    </div>
+
+                    <div className="pt-6 border-t border-border flex flex-col sm:flex-row items-center justify-between gap-6">
+                      <div>
+                        <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest mb-1">Novo Total</p>
+                        <p className="text-3xl font-black text-red-600 tracking-tighter">{editData.totalPrice} Kz</p>
+                      </div>
+                      <div className="flex gap-3 w-full sm:w-auto">
+                        <button 
+                          type="button"
+                          onClick={() => setIsEditing(false)}
+                          className="flex-1 sm:flex-none px-8 py-4 bg-muted text-foreground rounded-2xl font-bold hover:bg-muted/80 transition-all"
+                        >
+                          Cancelar
+                        </button>
+                        <button 
+                          type="submit"
+                          className="flex-1 sm:flex-none px-8 py-4 bg-red-600 text-white rounded-2xl font-bold hover:bg-red-700 transition-all shadow-lg shadow-red-600/20"
+                        >
+                          Guardar Alterações
+                        </button>
+                      </div>
+                    </div>
+                  </form>
+                ) : (
+                  <div className="space-y-8">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-8 border-b border-border">
+                    <div>
+                      <p className="text-xs font-black text-muted-foreground uppercase tracking-widest mb-1">Cliente</p>
+                      <p className="text-2xl font-bold text-foreground">{order.customerName}</p>
+                      <p className="text-sm text-muted-foreground">{order.whatsapp}</p>
+                    </div>
+                    <div className="md:text-right">
+                      <p className="text-xs font-black text-muted-foreground uppercase tracking-widest mb-1">Estado do Pedido</p>
+                      <span className={`inline-flex px-6 py-2 rounded-full text-sm font-bold ${
+                        order.status === "Pronto" ? "bg-green-500/10 text-green-600" :
+                        order.status === "Pedido Recebido" ? "bg-blue-500/10 text-blue-600" :
+                        order.status === "Em Andamento" ? "bg-amber-500/10 text-amber-600" :
+                        order.status === "Recusado" ? "bg-red-500/10 text-red-600" :
+                        order.status === "Entregue" ? "bg-emerald-500/10 text-emerald-600" :
+                        "bg-muted text-muted-foreground"
+                      }`}>
+                        {order.status}
+                      </span>
                     </div>
                   </div>
-                )}
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-8">
+                    <div>
+                      <p className="text-xs font-black text-muted-foreground uppercase tracking-widest mb-2">Serviço</p>
+                      <p className="text-foreground font-bold">
+                        {order.items && order.items.length > 0 
+                          ? order.items.map(i => i.serviceName).join(", ") 
+                          : ((order as any).serviceType === "print" ? "Impressão" : "Cópia")}
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        {order.items && order.items.length > 0 
+                          ? order.items.reduce((sum, i) => sum + i.pages, 0) 
+                          : (order as any).pages || 0} páginas total
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-black text-muted-foreground uppercase tracking-widest mb-2">Entrega</p>
+                      <p className="text-foreground font-bold">{order.deliveryType === "delivery" ? "Entrega ao Domicílio" : "Levantamento na Loja"}</p>
+                      <p className="text-sm text-muted-foreground">{order.address || "Sem endereço"}</p>
+                    </div>
+                  </div>
+
+                  <div className="pt-8 border-t border-border flex flex-col sm:flex-row items-center justify-between gap-6">
+                    <div>
+                      <p className="text-xs font-black text-muted-foreground uppercase tracking-widest mb-1">Total a Pagar</p>
+                      <p className="text-3xl font-black text-red-600 tracking-tighter">{order.totalPrice} Kz</p>
+                    </div>
+                    <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+                      <button 
+                        onClick={() => generateOrderPDF(order, settings)}
+                        className="px-8 py-4 bg-muted text-foreground rounded-2xl font-bold hover:bg-muted/80 transition-all flex items-center justify-center space-x-2"
+                      >
+                        <FileText className="w-5 h-5" />
+                        <span>PDF</span>
+                      </button>
+                      {order.status === "Pronto" && (
+                        <button 
+                          onClick={handleConfirmReceipt}
+                          className="px-8 py-4 bg-green-600 text-white rounded-2xl font-bold hover:bg-green-700 transition-all flex items-center justify-center space-x-2"
+                        >
+                          <CheckCircle className="w-5 h-5" />
+                          <span>Recebi o Pedido</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {order.status === "Pedido Recebido" && (
+                    <div className="flex flex-col sm:flex-row gap-4 pt-4">
+                      <button 
+                        onClick={() => setIsEditing(true)}
+                        className="flex-1 px-6 py-4 bg-blue-600/10 text-blue-600 rounded-2xl font-bold hover:bg-blue-600/20 transition-all flex items-center justify-center space-x-2"
+                      >
+                        <Edit className="w-5 h-5" />
+                        <span>Editar Dados</span>
+                      </button>
+                      <button 
+                        onClick={() => setShowCancelConfirm(true)}
+                        className="flex-1 px-6 py-4 bg-red-600/10 text-red-600 rounded-2xl font-bold hover:bg-red-600/20 transition-all flex items-center justify-center space-x-2"
+                      >
+                        <Trash className="w-5 h-5" />
+                        <span>Cancelar Pedido</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+                {/* Chat Interface for Order */}
+                <div className="pt-12 border-t border-border">
+                  <div className="flex items-center justify-between mb-8">
+                    <h4 className="text-xl font-bold text-foreground flex items-center space-x-3">
+                      <MessageCircle className="w-6 h-6 text-red-600" />
+                      <span>Conversa sobre o Pedido</span>
+                    </h4>
+                  </div>
+
+                  <div className="space-y-6 mb-8 max-h-[500px] overflow-y-auto pr-4 custom-scrollbar">
+                    {/* Initial Order Message */}
+                    <div className="flex justify-start">
+                      <div className="max-w-[85%] bg-muted p-6 rounded-3xl rounded-tl-none border border-border">
+                        <p className="text-xs font-black text-muted-foreground uppercase tracking-widest mb-2">Sistema</p>
+                        <p className="text-foreground">Pedido realizado com sucesso. Aguardando processamento.</p>
+                        <p className="text-[10px] text-muted-foreground mt-4">{new Date(order.createdAt).toLocaleString()}</p>
+                      </div>
+                    </div>
+
+                    {order.adminMessages?.map((msg, idx) => (
+                      <div key={idx} className={`flex ${msg.sender === 'customer' ? 'justify-end' : 'justify-start'}`}>
+                        <div className={`max-w-[85%] p-6 rounded-3xl border ${
+                          msg.sender === 'customer' 
+                            ? 'bg-red-600 text-white rounded-tr-none border-red-600 shadow-lg shadow-red-600/20' 
+                            : 'bg-muted text-foreground rounded-tl-none border-border'
+                        }`}>
+                          <p className={`text-[10px] font-black uppercase tracking-widest mb-2 ${msg.sender === 'customer' ? 'text-white/70' : 'text-muted-foreground'}`}>
+                            {msg.sender === 'customer' ? 'Você' : 'Suporte'}
+                          </p>
+                          <p className="leading-relaxed">{msg.text}</p>
+                          {msg.attachment && (
+                            <div className="mt-4 pt-4 border-t border-white/20">
+                              <a href={msg.attachment} target="_blank" rel="noreferrer" className={`inline-flex items-center space-x-2 text-xs font-bold ${msg.sender === 'customer' ? 'text-white hover:underline' : 'text-red-600 hover:underline'}`}>
+                                <ImageIcon className="w-4 h-4" />
+                                <span>Ver Anexo</span>
+                              </a>
+                            </div>
+                          )}
+                          <p className={`text-[10px] mt-4 ${msg.sender === 'customer' ? 'text-white/50' : 'text-muted-foreground'}`}>
+                            {new Date(msg.createdAt).toLocaleString()}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <form onSubmit={handleSendMessage} className="space-y-4">
+                    <div className="relative">
+                      <textarea 
+                        value={newMessage}
+                        onChange={e => setNewMessage(e.target.value)}
+                        placeholder="Escreva a sua mensagem..."
+                        className="w-full px-8 py-6 bg-muted border border-border rounded-[2rem] outline-none focus:border-red-600 transition-all text-foreground resize-none pr-32"
+                        rows={3}
+                      />
+                      <div className="absolute right-4 bottom-4 flex items-center space-x-2">
+                        <label className="p-3 bg-card border border-border rounded-xl cursor-pointer hover:bg-muted transition-colors">
+                          <input 
+                            type="file" 
+                            className="hidden" 
+                            onChange={e => e.target.files?.[0] && handleFileUpload(e.target.files[0])}
+                          />
+                          {isUploading ? (
+                            <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: "linear" }} className="w-5 h-5 border-2 border-red-600 border-t-transparent rounded-full" />
+                          ) : (
+                            <ImageIcon className="w-5 h-5 text-muted-foreground" />
+                          )}
+                        </label>
+                        <button 
+                          type="submit"
+                          disabled={!newMessage.trim() && !attachment}
+                          className="p-3 bg-red-600 text-white rounded-xl hover:bg-red-700 transition-all disabled:opacity-50"
+                        >
+                          <Send className="w-5 h-5" />
+                        </button>
+                      </div>
+                    </div>
+                    {attachment && (
+                      <div className="flex items-center justify-between p-4 bg-red-600/5 border border-red-600/20 rounded-2xl">
+                        <div className="flex items-center space-x-3">
+                          <ImageIcon className="w-5 h-5 text-red-600" />
+                          <span className="text-sm font-bold text-red-600">Ficheiro pronto para enviar</span>
+                        </div>
+                        <button onClick={() => setAttachment(null)} className="p-1 hover:bg-red-600/10 rounded-full">
+                          <X className="w-4 h-4 text-red-600" />
+                        </button>
+                      </div>
+                    )}
+                  </form>
+                </div>
 
                 <div className="pt-8 text-center border-t border-border">
                   <p className="text-sm text-muted-foreground mb-4">Precisa de ajuda com o seu pedido?</p>
@@ -3050,6 +3894,114 @@ const TrackingPage = ({ settings }: { settings: Settings }) => {
                     <MessageCircle className="w-5 h-5" />
                     <span>Falar connosco no WhatsApp</span>
                   </a>
+                </div>
+              </motion.div>
+            )}
+
+            {supportMessage && (
+              <motion.div 
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                className="space-y-12"
+              >
+                <div className="p-8 bg-muted rounded-[2rem] border border-border">
+                  <div className="flex justify-between items-start mb-6">
+                    <div>
+                      <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest mb-1">Ticket de Suporte</p>
+                      <h3 className="text-2xl font-bold text-foreground">{supportMessage.name}</h3>
+                      <p className="text-sm text-muted-foreground">{supportMessage.contact}</p>
+                    </div>
+                    <span className="px-4 py-1 bg-blue-500/10 text-blue-600 rounded-full text-xs font-bold">
+                      Ticket Ativo
+                    </span>
+                  </div>
+                  <div className="bg-card p-6 rounded-2xl border border-border">
+                    <p className="text-xs font-black text-muted-foreground uppercase tracking-widest mb-2">Mensagem Original</p>
+                    <p className="text-foreground leading-relaxed">{supportMessage.message}</p>
+                  </div>
+                </div>
+
+                {/* Chat Interface for Support */}
+                <div className="pt-12 border-t border-border">
+                  <div className="flex items-center justify-between mb-8">
+                    <h4 className="text-xl font-bold text-foreground flex items-center space-x-3">
+                      <MessageCircle className="w-6 h-6 text-red-600" />
+                      <span>Mensagens e Respostas</span>
+                    </h4>
+                  </div>
+
+                  <div className="space-y-6 mb-8 max-h-[500px] overflow-y-auto pr-4 custom-scrollbar">
+                    {supportMessage.responses?.map((resp, idx) => (
+                      <div key={idx} className={`flex ${resp.sender === 'customer' ? 'justify-end' : 'justify-start'}`}>
+                        <div className={`max-w-[85%] p-6 rounded-3xl border ${
+                          resp.sender === 'customer' 
+                            ? 'bg-red-600 text-white rounded-tr-none border-red-600 shadow-lg shadow-red-600/20' 
+                            : 'bg-muted text-foreground rounded-tl-none border-border'
+                        }`}>
+                          <p className={`text-[10px] font-black uppercase tracking-widest mb-2 ${resp.sender === 'customer' ? 'text-white/70' : 'text-muted-foreground'}`}>
+                            {resp.sender === 'customer' ? 'Você' : 'Suporte'}
+                          </p>
+                          <p className="leading-relaxed">{resp.text}</p>
+                          {resp.attachment && (
+                            <div className="mt-4 pt-4 border-t border-white/20">
+                              <a href={resp.attachment} target="_blank" rel="noreferrer" className={`inline-flex items-center space-x-2 text-xs font-bold ${resp.sender === 'customer' ? 'text-white hover:underline' : 'text-red-600 hover:underline'}`}>
+                                <ImageIcon className="w-4 h-4" />
+                                <span>Ver Anexo</span>
+                              </a>
+                            </div>
+                          )}
+                          <p className={`text-[10px] mt-4 ${resp.sender === 'customer' ? 'text-white/50' : 'text-muted-foreground'}`}>
+                            {new Date(resp.createdAt).toLocaleString()}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <form onSubmit={handleSendMessage} className="space-y-4">
+                    <div className="relative">
+                      <textarea 
+                        value={newMessage}
+                        onChange={e => setNewMessage(e.target.value)}
+                        placeholder="Escreva a sua resposta..."
+                        className="w-full px-8 py-6 bg-muted border border-border rounded-[2rem] outline-none focus:border-red-600 transition-all text-foreground resize-none pr-32"
+                        rows={3}
+                      />
+                      <div className="absolute right-4 bottom-4 flex items-center space-x-2">
+                        <label className="p-3 bg-card border border-border rounded-xl cursor-pointer hover:bg-muted transition-colors">
+                          <input 
+                            type="file" 
+                            className="hidden" 
+                            onChange={e => e.target.files?.[0] && handleFileUpload(e.target.files[0])}
+                          />
+                          {isUploading ? (
+                            <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: "linear" }} className="w-5 h-5 border-2 border-red-600 border-t-transparent rounded-full" />
+                          ) : (
+                            <ImageIcon className="w-5 h-5 text-muted-foreground" />
+                          )}
+                        </label>
+                        <button 
+                          type="submit"
+                          disabled={!newMessage.trim() && !attachment}
+                          className="p-3 bg-red-600 text-white rounded-xl hover:bg-red-700 transition-all disabled:opacity-50"
+                        >
+                          <Send className="w-5 h-5" />
+                        </button>
+                      </div>
+                    </div>
+                    {attachment && (
+                      <div className="flex items-center justify-between p-4 bg-red-600/5 border border-red-600/20 rounded-2xl">
+                        <div className="flex items-center space-x-3">
+                          <ImageIcon className="w-5 h-5 text-red-600" />
+                          <span className="text-sm font-bold text-red-600">Ficheiro pronto para enviar</span>
+                        </div>
+                        <button onClick={() => setAttachment(null)} className="p-1 hover:bg-red-600/10 rounded-full">
+                          <X className="w-4 h-4 text-red-600" />
+                        </button>
+                      </div>
+                    )}
+                  </form>
                 </div>
               </motion.div>
             )}
@@ -3071,6 +4023,7 @@ export default function App() {
   const [supportMessages, setSupportMessages] = useState<SupportMessage[]>([]);
   const [news, setNews] = useState<NewsItem[]>([]);
   const [unreadSupportCount, setUnreadSupportCount] = useState(0);
+  const [stats, setStats] = useState<Stats | null>(null);
   const [scrolled, setScrolled] = useState(false);
   const [cart, setCart] = useState<OrderItem[]>([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
@@ -3089,7 +4042,7 @@ export default function App() {
 
   const fetchData = async () => {
     try {
-      const [s, p, o, pt, af, g, sm, nw] = await Promise.all([
+      const [s, p, o, pt, af, g, sm, nw, st] = await Promise.all([
         api.getSettings(),
         api.getPrices(),
         api.getOrders(),
@@ -3097,7 +4050,8 @@ export default function App() {
         api.getAfiliados(),
         api.getGallery(),
         api.getSupportMessages(),
-        api.getNews()
+        api.getNews(),
+        api.getStats()
       ]);
       setSettings(s);
       setPrices(p);
@@ -3107,6 +4061,7 @@ export default function App() {
       setGallery(g);
       setSupportMessages(sm);
       setNews(nw);
+      setStats(st);
       setUnreadSupportCount(sm.filter((m: any) => !m.read).length);
     } catch (error) {
       console.error("Error fetching data:", error);
@@ -3181,16 +4136,6 @@ export default function App() {
   return (
     <Router>
       <div className="min-h-screen bg-background font-sans selection:bg-red-100 selection:text-red-600">
-        <Navbar 
-          settings={settings} 
-          unreadSupportCount={unreadSupportCount} 
-          scrolled={scrolled} 
-          theme={theme} 
-          toggleTheme={toggleTheme}
-          cartCount={cart.length}
-          onOpenCart={() => setIsCartOpen(true)}
-        />
-
         <AnimatePresence>
           {isCartOpen && (
             <div className="fixed inset-0 z-[100] flex justify-end">
@@ -3295,12 +4240,7 @@ export default function App() {
               partners={partners} 
               afiliados={afiliados} 
               gallery={gallery}
-              stats={{
-                totalOrders: orders.length,
-                pendingOrders: orders.filter(o => o.status !== "Pronto" && o.status !== "Recusado").length,
-                totalRevenue: orders.reduce((sum, o) => sum + o.totalPrice, 0),
-                totalPartners: partners.length + afiliados.length
-              }}
+              stats={stats}
               user={user}
               setUser={setUser}
               fetchData={fetchData}
@@ -3348,7 +4288,7 @@ export default function App() {
                   </>
                 } />
                 <Route path="/servicos" element={<ServicesPage settings={settings} prices={prices} addToCart={addToCart} />} />
-                <Route path="/rastrear" element={<TrackingPage settings={settings} />} />
+                <Route path="/rastrear" element={<TrackingPage settings={settings} prices={prices} />} />
                 <Route path="/suporte" element={<SupportForm settings={settings} />} />
                 <Route path="/termos" element={<TermsPage settings={settings} />} />
                 <Route path="/privacidade" element={<PrivacyPage settings={settings} />} />

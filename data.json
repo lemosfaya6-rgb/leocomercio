@@ -108,5 +108,28 @@
       "email": "admin@leocomercio.com",
       "password": "admin"
     }
+  ],
+  "news": [
+    {
+      "id": 1,
+      "title": "Novo Sistema de Afiliados",
+      "content": "Lançamos oficialmente o nosso novo sistema de afiliados! Agora você pode ganhar comissões por cada indicação bem-sucedida. Junte-se à nossa rede e comece a lucrar hoje mesmo.",
+      "date": "2026-03-24T10:00:00Z",
+      "active": true
+    },
+    {
+      "id": 2,
+      "title": "Expansão das Áreas de Entrega",
+      "content": "Estamos felizes em anunciar que agora entregamos em Talatona e Kilamba! Continuamos a trabalhar para levar os nossos serviços de impressão a mais pontos de Luanda.",
+      "date": "2026-03-26T14:30:00Z",
+      "active": true
+    },
+    {
+      "id": 3,
+      "title": "Melhorias no Dashboard Administrativo",
+      "content": "Realizamos actualizações importantes no nosso painel de controlo para tornar a gestão de pedidos mais rápida e intuitiva. A sua experiência é a nossa prioridade.",
+      "date": "2026-03-28T09:15:00Z",
+      "active": true
+    }
   ]
 }

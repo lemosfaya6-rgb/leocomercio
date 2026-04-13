@@ -61,6 +61,75 @@ const initialData = {
     gallery: [] as { id: number, url: string, title: string }[],
     ebookUrl: "",
     defaultCommission: 30,
+    terms: `Termos de Serviço - Leocomércio
+
+1. Aceitação dos Termos
+Ao utilizar os nossos serviços, o utilizador concorda plenamente com estes termos. Se não concordar com algum ponto, por favor não utilize a plataforma.
+
+2. Descrição dos Serviços
+A Leocomércio presta serviços de impressão, cópia e entrega de documentos. Reservamo-nos o direito de recusar impressões que violem a lei ou contenham conteúdo impróprio.
+
+3. Responsabilidade do Conteúdo
+O cliente é o único responsável pelos ficheiros enviados. Garanta que possui os direitos de autor ou autorização necessária para a reprodução dos mesmos. Não nos responsabilizamos por erros ortográficos ou de formatação nos ficheiros originais.
+
+4. Pagamentos e Preços
+Os preços estão sujeitos a alteração sem aviso prévio, mas serão honrados para pedidos já confirmados. O serviço só será iniciado após a confirmação do pagamento.
+
+5. Política de Cancelamento
+Devido à natureza personalizada do serviço, não aceitamos cancelamentos nem efectuamos reembolsos após o início do processo de impressão.
+
+6. Prazos e Entregas
+Esforçamo-nos para cumprir todos os prazos. No entanto, atrasos decorrentes de problemas técnicos ou logísticos externos podem ocorrer. A taxa de entrega é calculada com base na localização selecionada.`,
+    privacy: `Política de Privacidade - Leocomércio
+
+1. Recolha de Informação
+Recolhemos apenas os dados necessários para processar o seu pedido: Nome, Número de WhatsApp e os ficheiros de documentos enviados para impressão.
+
+2. Uso da Informação
+Os seus dados são utilizados exclusivamente para:
+- Identificar o seu pedido.
+- Entrar em contacto para confirmação ou dúvidas.
+- Realizar a entrega no endereço indicado.
+
+3. Proteção de Ficheiros
+Os ficheiros enviados são tratados com total confidencialidade. Após a conclusão da impressão e entrega, os ficheiros são eliminados dos nossos servidores e dispositivos de forma segura.
+
+4. Partilha com Terceiros
+Não vendemos, trocamos ou transferimos os seus dados pessoais para terceiros.
+
+5. Segurança
+Implementamos medidas de segurança para manter a segurança das suas informações pessoais quando faz um pedido.
+
+6. Contacto
+Para qualquer questão sobre a sua privacidade, entre em contacto com o nosso administrador através do WhatsApp disponível no site.`,
+    howItWorks: `Bem-vindo à nossa plataforma de serviços gráficos! Aqui está um guia detalhado de como tudo funciona:
+
+1. Escolha os seus Serviços
+Navegue pela nossa lista de serviços (Impressão, Cópia, etc.) e adicione o que precisa ao seu carrinho. Pode ajustar a quantidade de páginas e o tipo de impressão (Preto e Branco ou Colorido) para cada item.
+
+2. Preencha os seus Dados
+Ao finalizar o pedido, pedimos o seu nome e número de WhatsApp. Isso é fundamental para que possamos entrar em contacto e confirmar os detalhes da entrega.
+
+3. Envio de Documentos
+Após confirmar o pedido no site, será gerado um código de rastreio único. Pode carregar os seus ficheiros (PDF, Imagens, etc.) diretamente na página de rastreio ou enviá-los via WhatsApp para o nosso administrador.
+
+4. Pagamento e Confirmação
+O pagamento é feito via transferência bancária ou referência (conforme acordado no WhatsApp). Assim que o comprovativo for enviado, o seu pedido passará para o estado 'Em Andamento'.
+
+5. Acompanhamento em Tempo Real
+Use o seu código de rastreio na aba 'Rastrear' para ver o estado do seu pedido:
+- Pedido Recebido: Estamos a aguardar o pagamento/ficheiros.
+- Em Andamento: O seu documento está a ser impresso.
+- Pronto: O seu pedido está pronto para entrega ou levantamento.
+- Entregue: O processo foi concluído com sucesso.
+
+6. Entrega ao Domicílio
+Fazemos entregas em diversas áreas (Talatona, Kilamba, Maianga, etc.). O valor da taxa de entrega será somado ao total do seu pedido.
+
+7. Suporte e Dúvidas
+Se tiver qualquer problema, use a nossa aba de 'Suporte' para abrir um ticket ou clique no botão de WhatsApp para falar diretamente connosco.
+
+Estamos aqui para facilitar a sua vida gráfica!`,
   },
   prices: [
     { id: "bw", name: "Preto e Branco", description: "Impressão padrão em preto e branco para documentos e textos.", single: 50, promo: { pages: 3, price: 100 }, active: true },
@@ -71,6 +140,7 @@ const initialData = {
   afiliados: [],
   orders: [],
   supportMessages: [] as { id: number, name: string, contact: string, message: string, createdAt: string, read: boolean }[],
+  news: [] as { id: number, title: string, content: string, date: string, active: boolean }[],
   admins: [{ email: "admin@leocomercio.com", password: "admin" }],
 };
 
@@ -95,6 +165,7 @@ function ensureArrays(data: any) {
   if (!data.orders) data.orders = [];
   if (!data.partners) data.partners = [];
   if (!data.afiliados) data.afiliados = [];
+  if (!data.news) data.news = [];
   if (!data.supportMessages) data.supportMessages = [];
   if (!data.admins) data.admins = initialData.admins;
   if (!data.settings) data.settings = { ...initialData.settings };
@@ -102,6 +173,9 @@ function ensureArrays(data: any) {
   if (!data.settings.deliveryAreas) data.settings.deliveryAreas = initialData.settings.deliveryAreas;
   if (!data.settings.enabledDeliveryDays) data.settings.enabledDeliveryDays = initialData.settings.enabledDeliveryDays;
   if (data.settings.defaultCommission === undefined) data.settings.defaultCommission = 30;
+  if (!data.settings.howItWorks) data.settings.howItWorks = initialData.settings.howItWorks;
+  if (!data.settings.terms) data.settings.terms = initialData.settings.terms;
+  if (!data.settings.privacy) data.settings.privacy = initialData.settings.privacy;
   if (!data.prices || !Array.isArray(data.prices)) data.prices = initialData.prices;
   if (data.settings.enabledDeliveryDays.length === 5 && !data.settings.enabledDeliveryDays.includes("Sábado")) {
     data.settings.enabledDeliveryDays = ["Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo"];
@@ -373,7 +447,12 @@ async function startServer() {
 
   app.get("/api/stats", (req, res) => {
     const totalVendas = db.orders.length;
-    const totalFolhas = db.orders.reduce((acc: number, o: any) => acc + (o.pages || 0), 0);
+    const totalFolhas = db.orders.reduce((acc: number, o: any) => {
+      if (o.items && Array.isArray(o.items)) {
+        return acc + o.items.reduce((sum: number, item: any) => sum + (item.pages || 0), 0);
+      }
+      return acc + (o.pages || 0);
+    }, 0);
     const lucroEstimado = db.orders.reduce((acc: number, o: any) => acc + (o.totalPrice || 0), 0);
     const comissoesPagas = db.partners.reduce((acc: number, p: any) => acc + (p.stats.earned || 0), 0) + 
                           db.afiliados.reduce((acc: number, a: any) => acc + (a.stats.earned || 0), 0);
@@ -412,6 +491,27 @@ async function startServer() {
     db.supportMessages = db.supportMessages.filter((m: any) => m.id !== parseInt(req.params.id));
     saveData(db);
     await saveToSupabase("supportMessages", db.supportMessages);
+    res.json({ success: true });
+  });
+
+  app.get("/api/news", (req, res) => res.json(db.news || []));
+  app.post("/api/news", async (req, res) => {
+    const newItem = { 
+      id: Date.now(), 
+      ...req.body, 
+      date: new Date().toISOString(),
+      active: true
+    };
+    if (!db.news) db.news = [];
+    db.news.push(newItem);
+    saveData(db);
+    await saveToSupabase("news", db.news);
+    res.json(newItem);
+  });
+  app.delete("/api/news/:id", async (req, res) => {
+    db.news = db.news.filter((n: any) => n.id !== parseInt(req.params.id));
+    saveData(db);
+    await saveToSupabase("news", db.news);
     res.json({ success: true });
   });
 
