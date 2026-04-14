@@ -1727,34 +1727,84 @@ const HomePage = ({ settings, prices }: { settings: Settings, prices: Prices }) 
   );
 };
 
-const NewsPage = ({ news }: { news: NewsItem[] }) => (
-  <div className="pt-32 pb-24 bg-background min-h-screen">
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-      <div className="text-center mb-16">
-        <h1 className="text-4xl md:text-5xl font-black text-foreground mb-4">Notícias & Novidades</h1>
-        <p className="text-muted-foreground max-w-2xl mx-auto">Fique por dentro de tudo o que acontece na Leocomércio.</p>
+const NewsPage = ({ news }: { news: NewsItem[] }) => {
+  const [selectedNews, setSelectedNews] = useState<NewsItem | null>(null);
+
+  return (
+    <div className="pt-32 pb-24 bg-background min-h-screen">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="text-center mb-16">
+          <h1 className="text-4xl md:text-5xl font-black text-foreground mb-4">Notícias & Novidades</h1>
+          <p className="text-muted-foreground max-w-2xl mx-auto">Fique por dentro de tudo o que acontece na Leocomércio.</p>
+        </div>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+          {news.filter(n => n.active).map(item => (
+            <motion.div 
+              key={item.id}
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              className="bg-card p-8 rounded-[2.5rem] border border-border shadow-xl flex flex-col"
+            >
+              <div className="flex items-center space-x-2 text-red-600 mb-4">
+                <Calendar className="w-4 h-4" />
+                <span className="text-xs font-bold uppercase tracking-widest">{new Date(item.date).toLocaleDateString()}</span>
+              </div>
+              <h3 className="text-xl font-bold text-foreground mb-4">{item.title}</h3>
+              <p className="text-muted-foreground text-sm leading-relaxed mb-6 line-clamp-4 flex-1">{item.content}</p>
+              <button 
+                onClick={() => setSelectedNews(item)}
+                className="flex items-center space-x-2 text-red-600 font-bold hover:translate-x-2 transition-transform group"
+              >
+                <span>Ver mais</span>
+                <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+              </button>
+            </motion.div>
+          ))}
+        </div>
       </div>
-      
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-        {news.filter(n => n.active).map(item => (
-          <motion.div 
-            key={item.id}
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            className="bg-card p-8 rounded-[2.5rem] border border-border shadow-xl"
-          >
-            <div className="flex items-center space-x-2 text-red-600 mb-4">
-              <Calendar className="w-4 h-4" />
-              <span className="text-xs font-bold uppercase tracking-widest">{new Date(item.date).toLocaleDateString()}</span>
-            </div>
-            <h3 className="text-xl font-bold text-foreground mb-4">{item.title}</h3>
-            <p className="text-muted-foreground text-sm leading-relaxed mb-6 line-clamp-4">{item.content}</p>
-          </motion.div>
-        ))}
-      </div>
+
+      <AnimatePresence>
+        {selectedNews && (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setSelectedNews(null)}
+              className="absolute inset-0 bg-black/60 backdrop-blur-md"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="relative w-full max-w-2xl bg-background rounded-[2.5rem] border border-border shadow-2xl overflow-hidden max-h-[90vh] flex flex-col"
+            >
+              <div className="p-8 border-b border-border flex justify-between items-center bg-muted/30">
+                <div className="flex items-center space-x-2 text-red-600">
+                  <Calendar className="w-5 h-5" />
+                  <span className="text-sm font-bold uppercase tracking-widest">{new Date(selectedNews.date).toLocaleDateString()}</span>
+                </div>
+                <button 
+                  onClick={() => setSelectedNews(null)}
+                  className="p-2 hover:bg-muted rounded-full transition-colors text-muted-foreground"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+              <div className="p-8 overflow-y-auto custom-scrollbar">
+                <h2 className="text-3xl font-black text-foreground mb-6 leading-tight">{selectedNews.title}</h2>
+                <div className="prose prose-red dark:prose-invert max-w-none text-foreground leading-relaxed whitespace-pre-wrap text-lg">
+                  {selectedNews.content}
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
-  </div>
-);
+  );
+};
 const TermsPage = ({ settings }: { settings: Settings }) => (
   <div className="pt-32 pb-24 bg-background min-h-screen">
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
