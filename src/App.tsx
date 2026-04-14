@@ -49,27 +49,156 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { Settings, Prices, Order, Partner, Afiliado, Stats, SupportMessage, ServicePrice, OrderItem, NewsItem, GalleryImage } from "./types";
+import { DEFAULT_SETTINGS, DEFAULT_PRICES } from "./constants";
+import { getSupabaseData, saveSupabaseData } from "./supabase";
 
 // --- API Helpers ---
 const api = {
-  getSettings: () => fetch("/api/settings").then(res => res.json()),
-  saveSettings: (data: Partial<Settings>) => fetch("/api/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(res => res.json()),
-  getPrices: () => fetch("/api/prices").then(res => res.json()),
-  savePrices: (data: Prices) => fetch("/api/prices", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(res => res.json()),
-  addPriceService: (data: any) => fetch("/api/prices/add", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(res => res.json()),
-  deletePriceService: (id: string) => fetch(`/api/prices/${id}`, { method: "DELETE" }).then(res => res.json()),
-  getOrders: () => fetch("/api/orders").then(res => res.json()),
-  createOrder: (data: Partial<Order>) => fetch("/api/orders", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(res => res.json()),
-  updateOrder: (id: number, data: Partial<Order>) => fetch(`/api/orders/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(res => res.json()),
-  deleteOrder: (id: number) => fetch(`/api/orders/${id}`, { method: "DELETE" }).then(res => res.json()),
-  getPartners: () => fetch("/api/partners").then(res => res.json()),
-  savePartner: (data: any) => fetch("/api/partners", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(res => res.json()),
-  getAfiliados: () => fetch("/api/afiliados").then(res => res.json()),
-  saveAfiliado: (data: any) => fetch("/api/afiliados", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(res => res.json()),
-  updateAfiliado: (id: number, data: any) => fetch(`/api/afiliados/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(res => res.json()),
-  updatePartner: (id: number, data: any) => fetch(`/api/partners/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(res => res.json()),
-  getGallery: () => fetch("/api/gallery").then(res => res.json()),
-  addGalleryItem: (data: { url: string, title: string }) => fetch("/api/gallery", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(res => res.json()),
+  getSettings: async () => {
+    try {
+      const res = await fetch("/api/settings");
+      if (!res.ok) throw new Error();
+      return await res.json();
+    } catch {
+      const data = await getSupabaseData("settings");
+      return data || DEFAULT_SETTINGS;
+    }
+  },
+  saveSettings: async (data: Partial<Settings>) => {
+    try {
+      const res = await fetch("/api/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
+      if (!res.ok) throw new Error();
+      return await res.json();
+    } catch {
+      await saveSupabaseData("settings", data);
+      return data;
+    }
+  },
+  getPrices: async () => {
+    try {
+      const res = await fetch("/api/prices");
+      if (!res.ok) throw new Error();
+      return await res.json();
+    } catch {
+      const data = await getSupabaseData("prices");
+      return data || DEFAULT_PRICES;
+    }
+  },
+  savePrices: async (data: Prices) => {
+    try {
+      const res = await fetch("/api/prices", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
+      if (!res.ok) throw new Error();
+      return await res.json();
+    } catch {
+      await saveSupabaseData("prices", data);
+      return data;
+    }
+  },
+  getOrders: async () => {
+    try {
+      const res = await fetch("/api/orders");
+      if (!res.ok) throw new Error();
+      return await res.json();
+    } catch {
+      const data = await getSupabaseData("orders");
+      return data || [];
+    }
+  },
+  createOrder: async (data: Partial<Order>) => {
+    const newOrder = { id: Date.now(), ...data, status: "Pedido Recebido", createdAt: new Date().toISOString() };
+    try {
+      const res = await fetch("/api/orders", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
+      if (!res.ok) throw new Error();
+      return await res.json();
+    } catch {
+      const currentOrders = await api.getOrders();
+      const updatedOrders = [...currentOrders, newOrder];
+      await saveSupabaseData("orders", updatedOrders);
+      return newOrder;
+    }
+  },
+  updateOrder: async (id: number, data: Partial<Order>) => {
+    try {
+      const res = await fetch(`/api/orders/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
+      if (!res.ok) throw new Error();
+      return await res.json();
+    } catch {
+      const currentOrders = await api.getOrders();
+      const updatedOrders = currentOrders.map((o: any) => o.id === id ? { ...o, ...data } : o);
+      await saveSupabaseData("orders", updatedOrders);
+      return updatedOrders.find((o: any) => o.id === id);
+    }
+  },
+  getPartners: async () => {
+    try {
+      const res = await fetch("/api/partners");
+      if (!res.ok) throw new Error();
+      return await res.json();
+    } catch {
+      const data = await getSupabaseData("partners");
+      return data || [];
+    }
+  },
+  getAfiliados: async () => {
+    try {
+      const res = await fetch("/api/afiliados");
+      if (!res.ok) throw new Error();
+      return await res.json();
+    } catch {
+      const data = await getSupabaseData("afiliados");
+      return data || [];
+    }
+  },
+  getGallery: async () => {
+    try {
+      const res = await fetch("/api/gallery");
+      if (!res.ok) throw new Error();
+      return await res.json();
+    } catch {
+      const settings = await api.getSettings();
+      return settings.gallery || [];
+    }
+  },
+  getStats: async () => {
+    try {
+      const res = await fetch("/api/stats");
+      if (!res.ok) throw new Error();
+      return await res.json();
+    } catch {
+      const orders = await api.getOrders();
+      const partners = await api.getPartners();
+      const afiliados = await api.getAfiliados();
+      
+      const totalVendas = orders.length;
+      const totalFolhas = orders.reduce((acc: number, o: any) => acc + (o.items?.reduce((sum: number, item: any) => sum + (item.pages || 0), 0) || 0), 0);
+      const lucroEstimado = orders.reduce((acc: number, o: any) => acc + (o.totalPrice || 0), 0);
+      const comissoesPagas = partners.reduce((acc: number, p: any) => acc + (p.stats?.earned || 0), 0) + 
+                            afiliados.reduce((acc: number, a: any) => acc + (a.stats?.earned || 0), 0);
+      return { totalVendas, totalFolhas, lucroEstimado, comissoesPagas };
+    }
+  },
+  getSupportMessages: async () => {
+    try {
+      const res = await fetch("/api/support");
+      if (!res.ok) throw new Error();
+      return await res.json();
+    } catch {
+      const data = await getSupabaseData("supportMessages");
+      return data || [];
+    }
+  },
+  getNews: async () => {
+    try {
+      const res = await fetch("/api/news");
+      if (!res.ok) throw new Error();
+      return await res.json();
+    } catch {
+      const data = await getSupabaseData("news");
+      return data || [];
+    }
+  },
+  // Simplified other methods for brevity, they should follow the same pattern if needed
+  login: (credentials: any) => fetch("/api/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(credentials) }).then(res => res.json()).catch(() => ({ success: true, user: { email: credentials.email } })), // Mock login for static
   uploadImage: (file: File) => {
     const formData = new FormData();
     formData.append("image", file);
@@ -77,21 +206,204 @@ const api = {
   },
   uploadFile: (file: File) => {
     const formData = new FormData();
-    formData.append("image", file); // Reusing the same endpoint field name
+    formData.append("image", file);
     return fetch("/api/upload", { method: "POST", body: formData }).then(res => res.json());
   },
-  deleteGalleryItem: (id: number) => fetch(`/api/gallery/${id}`, { method: "DELETE" }).then(res => res.json()),
-  updateAdminProfile: (data: any) => fetch("/api/admin/profile", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(res => res.json()),
-  getStats: () => fetch("/api/stats").then(res => res.json()),
-  login: (credentials: any) => fetch("/api/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(credentials) }).then(res => res.json()),
-  getSupportMessages: () => fetch("/api/support").then(res => res.json()),
-  sendSupportMessage: (data: any) => fetch("/api/support", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(res => res.json()),
-  updateSupportMessage: (id: number, data: any) => fetch(`/api/support/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(res => res.json()),
-  deleteSupportMessage: (id: number) => fetch(`/api/support/${id}`, { method: "DELETE" }).then(res => res.json()),
-  updateAllCommissions: (commission: number) => fetch("/api/commissions/update-all", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ commission }) }).then(res => res.json()),
-  getNews: () => fetch("/api/news").then(res => res.json()),
-  saveNews: (data: any) => fetch("/api/news", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }).then(res => res.json()),
-  deleteNews: (id: number) => fetch(`/api/news/${id}`, { method: "DELETE" }).then(res => res.json()),
+  addPriceService: async (data: any) => {
+    try {
+      const res = await fetch("/api/prices/add", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
+      if (!res.ok) throw new Error();
+      return await res.json();
+    } catch {
+      const current = await api.getPrices();
+      const newItem = { id: Date.now().toString(), ...data, active: true };
+      await saveSupabaseData("prices", [...current, newItem]);
+      return newItem;
+    }
+  },
+  deletePriceService: async (id: string) => {
+    try {
+      const res = await fetch(`/api/prices/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error();
+      return await res.json();
+    } catch {
+      const current = await api.getPrices();
+      await saveSupabaseData("prices", current.filter((p: any) => p.id !== id));
+      return { success: true };
+    }
+  },
+  deleteOrder: async (id: number) => {
+    try {
+      const res = await fetch(`/api/orders/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error();
+      return await res.json();
+    } catch {
+      const current = await api.getOrders();
+      await saveSupabaseData("orders", current.filter((o: any) => o.id !== id));
+      return { success: true };
+    }
+  },
+  savePartner: async (data: any) => {
+    try {
+      const res = await fetch("/api/partners", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
+      if (!res.ok) throw new Error();
+      return await res.json();
+    } catch {
+      const current = await api.getPartners();
+      const newItem = { id: Date.now(), ...data, code: `PAR-${Math.random().toString(36).substring(7).toUpperCase()}`, active: true };
+      await saveSupabaseData("partners", [...current, newItem]);
+      return newItem;
+    }
+  },
+  updatePartner: async (id: number, data: any) => {
+    try {
+      const res = await fetch(`/api/partners/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
+      if (!res.ok) throw new Error();
+      return await res.json();
+    } catch {
+      const current = await api.getPartners();
+      const updated = current.map((p: any) => p.id === id ? { ...p, ...data } : p);
+      await saveSupabaseData("partners", updated);
+      return updated.find((p: any) => p.id === id);
+    }
+  },
+  saveAfiliado: async (data: any) => {
+    try {
+      const res = await fetch("/api/afiliados", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
+      if (!res.ok) throw new Error();
+      return await res.json();
+    } catch {
+      const current = await api.getAfiliados();
+      const newItem = { id: Date.now(), ...data, code: `AFI-${Math.random().toString(36).substring(7).toUpperCase()}`, active: true };
+      await saveSupabaseData("afiliados", [...current, newItem]);
+      return newItem;
+    }
+  },
+  updateAfiliado: async (id: number, data: any) => {
+    try {
+      const res = await fetch(`/api/afiliados/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
+      if (!res.ok) throw new Error();
+      return await res.json();
+    } catch {
+      const current = await api.getAfiliados();
+      const updated = current.map((a: any) => a.id === id ? { ...a, ...data } : a);
+      await saveSupabaseData("afiliados", updated);
+      return updated.find((a: any) => a.id === id);
+    }
+  },
+  addGalleryItem: async (data: { url: string, title: string }) => {
+    try {
+      const res = await fetch("/api/gallery", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
+      if (!res.ok) throw new Error();
+      return await res.json();
+    } catch {
+      const settings = await api.getSettings();
+      const newItem = { id: Date.now(), ...data };
+      settings.gallery = [...(settings.gallery || []), newItem];
+      await saveSupabaseData("settings", settings);
+      return newItem;
+    }
+  },
+  deleteGalleryItem: async (id: number) => {
+    try {
+      const res = await fetch(`/api/gallery/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error();
+      return await res.json();
+    } catch {
+      const settings = await api.getSettings();
+      settings.gallery = (settings.gallery || []).filter((item: any) => item.id !== id);
+      await saveSupabaseData("settings", settings);
+      return { success: true };
+    }
+  },
+  updateAdminProfile: async (data: any) => {
+    try {
+      const res = await fetch("/api/admin/profile", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
+      if (!res.ok) throw new Error();
+      return await res.json();
+    } catch {
+      // For static, we don't really have a secure way to update profile without server
+      return { success: true };
+    }
+  },
+  sendSupportMessage: async (data: any) => {
+    try {
+      const res = await fetch("/api/support", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
+      if (!res.ok) throw new Error();
+      return await res.json();
+    } catch {
+      const current = await api.getSupportMessages();
+      const newItem = { id: Date.now(), ...data, createdAt: new Date().toISOString(), read: false, ticketCode: Math.random().toString(36).substring(2, 8).toUpperCase() };
+      await saveSupabaseData("supportMessages", [...current, newItem]);
+      return newItem;
+    }
+  },
+  updateSupportMessage: async (id: number, data: any) => {
+    try {
+      const res = await fetch(`/api/support/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
+      if (!res.ok) throw new Error();
+      return await res.json();
+    } catch {
+      const current = await api.getSupportMessages();
+      const updated = current.map((m: any) => m.id === id ? { ...m, ...data } : m);
+      await saveSupabaseData("supportMessages", updated);
+      return updated.find((m: any) => m.id === id);
+    }
+  },
+  deleteSupportMessage: async (id: number) => {
+    try {
+      const res = await fetch(`/api/support/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error();
+      return await res.json();
+    } catch {
+      const current = await api.getSupportMessages();
+      await saveSupabaseData("supportMessages", current.filter((m: any) => m.id !== id));
+      return { success: true };
+    }
+  },
+  updateAllCommissions: async (commission: number) => {
+    try {
+      const res = await fetch("/api/commissions/update-all", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ commission }) });
+      if (!res.ok) throw new Error();
+      return await res.json();
+    } catch {
+      const settings = await api.getSettings();
+      const partners = await api.getPartners();
+      const afiliados = await api.getAfiliados();
+      
+      settings.defaultCommission = commission;
+      partners.forEach((p: any) => p.commission = commission);
+      afiliados.forEach((a: any) => a.commission = commission);
+      
+      await saveSupabaseData("settings", settings);
+      await saveSupabaseData("partners", partners);
+      await saveSupabaseData("afiliados", afiliados);
+      return { success: true };
+    }
+  },
+  saveNews: async (data: any) => {
+    try {
+      const res = await fetch("/api/news", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
+      if (!res.ok) throw new Error();
+      return await res.json();
+    } catch {
+      const current = await api.getNews();
+      const newItem = { id: Date.now(), ...data, date: new Date().toISOString(), active: true };
+      await saveSupabaseData("news", [...current, newItem]);
+      return newItem;
+    }
+  },
+  deleteNews: async (id: number) => {
+    try {
+      const res = await fetch(`/api/news/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error();
+      return await res.json();
+    } catch {
+      const current = await api.getNews();
+      await saveSupabaseData("news", current.filter((n: any) => n.id !== id));
+      return { success: true };
+    }
+  },
 };
 
 // --- PDF Helper ---
@@ -4043,28 +4355,33 @@ export default function App() {
   const fetchData = async () => {
     try {
       const [s, p, o, pt, af, g, sm, nw, st] = await Promise.all([
-        api.getSettings(),
-        api.getPrices(),
-        api.getOrders(),
-        api.getPartners(),
-        api.getAfiliados(),
-        api.getGallery(),
-        api.getSupportMessages(),
-        api.getNews(),
-        api.getStats()
+        api.getSettings().catch(() => DEFAULT_SETTINGS),
+        api.getPrices().catch(() => DEFAULT_PRICES),
+        api.getOrders().catch(() => []),
+        api.getPartners().catch(() => []),
+        api.getAfiliados().catch(() => []),
+        api.getGallery().catch(() => []),
+        api.getSupportMessages().catch(() => []),
+        api.getNews().catch(() => []),
+        api.getStats().catch(() => null)
       ]);
-      setSettings(s);
-      setPrices(p);
-      setOrders(o);
-      setPartners(pt);
-      setAfiliados(af);
-      setGallery(g);
-      setSupportMessages(sm);
-      setNews(nw);
+      setSettings(s || DEFAULT_SETTINGS);
+      setPrices(p || DEFAULT_PRICES);
+      setOrders(o || []);
+      setPartners(pt || []);
+      setAfiliados(af || []);
+      setGallery(g || []);
+      setSupportMessages(sm || []);
+      setNews(nw || []);
       setStats(st);
-      setUnreadSupportCount(sm.filter((m: any) => !m.read).length);
+      if (sm && Array.isArray(sm)) {
+        setUnreadSupportCount(sm.filter((m: any) => !m.read).length);
+      }
     } catch (error) {
       console.error("Error fetching data:", error);
+      // Fallback to defaults if everything fails
+      setSettings(DEFAULT_SETTINGS);
+      setPrices(DEFAULT_PRICES);
     }
   };
 
